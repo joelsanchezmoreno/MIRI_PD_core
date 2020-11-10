@@ -2,23 +2,26 @@
 
 module tlb_cache
 (
-    input  logic                    clock,
-    input  logic                    reset,
+    input   logic                           clock,
+    input   logic                           reset,
+    input   multithreading_mode_t           mt_mode,
 
     // Request from the core pipeline
-    input  logic                    req_valid,
-    input  logic [`VIRT_ADDR_RANGE] req_virt_addr,
-    input  priv_mode_t              priv_mode,
+    input   logic                           req_valid,
+    input   logic [`THR_PER_CORE_WIDTH-1:0] req_thread_id,
+    input   logic [`VIRT_ADDR_RANGE]        req_virt_addr,
+    input   priv_mode_t                     priv_mode,
 
     // Response to the cache
-    output logic                    rsp_valid,
-    output logic                    tlb_miss,
-    output logic [`PHY_ADDR_RANGE]  rsp_phy_addr,
-    output logic                    writePriv,
+    output  logic                           rsp_valid,
+    output  logic                           tlb_miss,
+    output  logic [`PHY_ADDR_RANGE]         rsp_phy_addr,
+    output  logic                           writePriv,
 
     // New TLB entry
-    input   logic                   new_tlb_entry,
-    input   tlb_req_info_t          new_tlb_info
+    input   logic                           new_tlb_entry,
+    input   logic [`THR_PER_CORE_WIDTH-1:0] new_tlb_thread_id,
+    input   tlb_req_info_t                  new_tlb_info
 );
 
 //////////////////////////////////////////////////
@@ -44,8 +47,8 @@ logic [`TLB_NUM_WAYS_RANGE]     replace_tlb_pos;
 
 //////////////////////////////////////////////////
 // Position of the victim to be evicted from the TLB
-logic [`TLB_NUM_SET_RANGE]          req_addr_set;  
-logic [`TLB_WAYS_PER_SET_RANGE]     victim_way; 
+logic [`TLB_NUM_SET_RANGE]      req_addr_set;  
+logic [`TLB_WAYS_PER_SET_RANGE] victim_way; 
 
 integer iter;
 
@@ -78,7 +81,7 @@ begin
         else // User mode
         begin
             req_addr_set    = req_virt_addr[`TLB_SET_ADDR_RANGE]; 
-            tlb_miss    = 1'b1;
+            tlb_miss        = 1'b1;
             // Look if the tag is on the cache
             for (iter = 0; iter < `TLB_WAYS_PER_SET; iter++)
             begin
@@ -133,7 +136,7 @@ assign update_way   = (req_valid & !tlb_miss  ) ? hit_way :
 
 // This module returns the oldest way accessed for a given set and updates the
 // the LRU logic when there's a hit on the TLB or we bring a new translation
-cache_lru
+cache_lru_mt
 #(
     .NUM_SET       ( `TLB_NUM_SET       ),
     .NUM_WAYS      ( `TLB_NUM_WAYS      ),
@@ -144,6 +147,8 @@ tlb_lru
     // System signals
     .clock              ( clock             ),
     .reset              ( reset             ),
+    .mt_mode            ( mt_mode           ),
+    .thread_id          ( req_thread_id     ),
 
     // Info to select the victim
     .victim_req         ( new_tlb_entry     ),

@@ -78,7 +78,9 @@ function automatic is_store_instr;
     begin
         is_store_instr = 1'b0;
         if ( (opcode == `INSTR_STB_OPCODE)
-            |(opcode == `INSTR_STW_OPCODE))
+            |(opcode == `INSTR_STW_OPCODE)
+            |(opcode == `INSTR_ASTB_OPCODE)
+            |(opcode == `INSTR_ASTW_OPCODE))
                 is_store_instr = 1'b1;
     end
 endfunction
@@ -131,6 +133,12 @@ endfunction
 ////////////////////////////////////////////////////////////////////////////////
 // ENUMS
 ////////////////////////////////////////////////////////////////////////////////
+typedef enum logic [1:0] {
+   Single_Threaded   = 2'b00,
+   Multi_Threaded    = 2'b01,
+   Reserved0         = 2'b10,
+   Reserved          = 2'b11 
+} mt_modes_t;
 
 typedef enum logic [1:0] {
    Byte            = 2'b00, // 8b
@@ -204,6 +212,10 @@ typedef struct packed
 ////////////////////////////////////////////////////////////////////////////////
 // STRUCTS FOR CONTROL SIGNALS
 ////////////////////////////////////////////////////////////////////////////////
+typedef struct packed
+{
+    mt_modes_t     mode;
+} multithreading_mode_t;
 
 typedef struct packed 
 {

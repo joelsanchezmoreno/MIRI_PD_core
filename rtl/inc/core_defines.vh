@@ -20,6 +20,9 @@
 `define VIRT_ADDR_RANGE `VIRT_ADDR_WIDTH-1:0
 `define PHY_ADDR_RANGE  `PHY_ADDR_WIDTH-1:0
 
+`define THR_PER_CORE        2
+`define THR_PER_CORE_WIDTH  $clog2(`THR_PER_CORE)
+
 ///////////////////////
 // Register file defines
 ///////////////////////
@@ -27,11 +30,14 @@
 `define REG_FILE_DATA_RANGE `REG_FILE_DATA_WIDTH-1:0
 `define REG_FILE_NUM_REGS   32
 `define REG_FILE_NUM_REGS_RANGE  `REG_FILE_NUM_REGS-1:0
-`define REG_FILE_ADDR_WIDTH $clog2(`REG_FILE_NUM_REGS)
+//`define REG_FILE_ADDR_WIDTH $clog2(`REG_FILE_NUM_REGS)
+`define REG_FILE_ADDR_WIDTH $clog2(`REG_FILE_NUM_REGS) + 1 // Adding one bit for special registers such as MT_MODE
 `define REG_FILE_ADDR_RANGE `REG_FILE_ADDR_WIDTH-1:0
 
 `define REG_FILE_XCPT_ADDR_WIDTH `PC_WIDTH
 `define REG_FILE_XCPT_ADDR_RANGE `REG_FILE_XCPT_ADDR_WIDTH-1:0
+
+`define `MT_MODE_REG_ADDR 6'h3f
 
 ///////////////////////
 // Virtual Memory defines
@@ -132,6 +138,8 @@
 `define INSTR_STB_OPCODE        `INSTR_OPCODE_WIDTH'h12
 `define INSTR_STW_OPCODE        `INSTR_OPCODE_WIDTH'h13
 `define INSTR_MOV_OPCODE        `INSTR_OPCODE_WIDTH'h14
+`define INSTR_ASTB_OPCODE       `INSTR_OPCODE_WIDTH'h15
+`define INSTR_ASTW_OPCODE       `INSTR_OPCODE_WIDTH'h16
 
 `define INSTR_BEQ_OPCODE        `INSTR_OPCODE_WIDTH'h30
 `define INSTR_BNE_OPCODE        `INSTR_OPCODE_WIDTH'h34
@@ -160,6 +168,7 @@
 `define ICACHE_NUM_WAYS         4
 `define ICACHE_NUM_WAY_WIDTH    $clog2(`ICACHE_NUM_WAYS)
 `define ICACHE_NUM_WAY_RANGE    `ICACHE_NUM_WAY_WIDTH-1:0
+`define ICACHE_NUM_WAYS_MT      `ICACHE_NUM_WAYS/`THR_PER_CORE
 
 `define ICACHE_WAYS_PER_SET         (`ICACHE_NUM_WAYS/`ICACHE_NUM_SET)
 `define ICACHE_WAYS_PER_SET_WIDTH   $clog2(`ICACHE_WAYS_PER_SET)

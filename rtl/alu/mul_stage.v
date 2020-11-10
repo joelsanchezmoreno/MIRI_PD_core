@@ -3,6 +3,7 @@ module mul_stage
 (
     // Request from previous mul stage
         // Operation
+    input   logic [`THR_PER_CORE_WIDTH-1:0] thread_id_in,
     input   logic                           instr_valid_in,
     input   logic [`ROB_ID_RANGE]           instr_id_in,
     input   logic [`PC_WIDTH-1:0]           program_counter_in,
@@ -16,6 +17,7 @@ module mul_stage
 
     // Request to next mul stage 
         // RF
+    output  logic [`THR_PER_CORE_WIDTH-1:0] thread_id_out,
     output  logic                           instr_valid_out,
     output  logic [`ROB_ID_RANGE]           instr_id_out,
     output  logic [`PC_WIDTH-1:0]           program_counter_out,
@@ -30,6 +32,7 @@ module mul_stage
 
 always_comb
 begin
+    thread_id_out       = thread_id_in;
     instr_valid_out     = instr_valid_in;
     instr_id_out        = instr_id_in;
     program_counter_out = program_counter_in;
