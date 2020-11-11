@@ -10,9 +10,9 @@ module alu_top
     output  logic                            cache_stage_free,
 
     // Stall pipeline
-    input   logic                           flush_alu,
-    input   logic                           dcache_ready,
-    output  logic                           stall_decode,
+    input   logic [`THR_PER_CORE-1:0]       flush_alu,
+    input   logic [`THR_PER_CORE-1:0]       dcache_ready,
+    output  logic [`THR_PER_CORE-1:0]       stall_decode,
 
     // Exceptions
     input   fetch_xcpt_t                    xcpt_fetch_in,
@@ -23,16 +23,19 @@ module alu_top
     input   alu_request_t                   req_alu_info,  
     input   logic [`ROB_ID_RANGE]           req_alu_instr_id,
     input   logic [`PC_WIDTH-1:0]           req_alu_pc,
+    input   logic [`THR_PER_CORE_WIDTH-1:0] req_alu_thread_id,
    
     // Request to dcache stage 
     output  logic                           req_dcache_valid,
     output  dcache_request_t                req_dcache_info,
+    output  logic [`THR_PER_CORE_WIDTH-1:0] req_dcache_thread_id,
     
     // Request to WB stage
     output  logic                           req_wb_valid,
     output  writeback_request_t             req_wb_info,
     output  logic                           req_wb_mem_blocked,
     output  dcache_request_t                req_wb_dcache_info,
+    output  logic [`THR_PER_CORE_WIDTH-1:0] req_wb_thread_id,
 
     // Branch signals to fetch stage
     output  logic [`PC_WIDTH-1:0]           branch_pc,
@@ -48,6 +51,38 @@ module alu_top
     input   logic [`REG_FILE_DATA_RANGE]    rob_src1_data,
     input   logic [`REG_FILE_DATA_RANGE]    rob_src2_data
 );
+
+logic   [`THR_PER_CORE_WIDTH-1:0] thread_id;
+assign thread_id = req_alu_thread_id;
+
+logic [`THR_PER_CORE_WIDTH-1:0] previous_thread;
+
+ // CLK    DOUT             DIN            
+`FF(clock, previous_thread, thread_id)
+
+
+logic [`THR_PER_CORE-1:0]                       req_alu_valid_ff;
+mul_request_t [`THR_PER_CORE-1:0]               req_alu_info_ff;
+logic [`THR_PER_CORE-1:0][`ROB_ID_RANGE]        req_alu_instr_id_ff;
+logic [`THR_PER_CORE-1:0][`PC_WIDTH-1:0]        req_alu_pc_ff;
+
+genvar pp;
+generate for (pp=0; pp < `THR_PER_CORE; pp++) 
+begin
+    logic update_ff;
+    assign update_ff = (thread_id == pp);
+
+        //     CLK   RST                     EN         DOUT                  DIN            DEF
+    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff, req_alu_valid_ff[pp], req_alu_valid, 1'b0)
+
+        // CLK    EN         DOUT                     DIN
+    `EN_FF(clock, update_ff, req_alu_info_ff[pp],     req_alu_info)
+    `EN_FF(clock, update_ff, req_alu_instr_id_ff[pp], req_alu_instr_id)
+    `EN_FF(clock, update_ff, req_alu_pc_ff[pp],       req_alu_pc)
+end
+endgenerate
+
+
 //////////////////////////////////////
 // Stall
 logic stall_decode_ff;
@@ -73,24 +108,18 @@ assign decode_xcpt_valid =  req_alu_valid
 ////////////////////////////////////
 // Request to D$ stage or WB stage
     
-// Cache will not receive a request next cycle from ALU because the request is
+// Cache will not receive a request next cycle from ALU because the thread was
+// stalled or had an xcpt going to WB. This means that we can send a queued
+// request on the RoB to the data cache 
+//
 assign cache_stage_free = req_wb_valid | !req_alu_valid;
 
 logic            req_dcache_valid_next;
-logic            req_dcache_valid_ff;
 logic            req_wb_mem_blocked_next;
-logic            req_wb_mem_blocked_ff;
-
 dcache_request_t req_dcache_info_next;
-dcache_request_t req_dcache_info_ff;
-
-
-//  CLK    DOUT                 DIN
-`FF(clock, req_dcache_info_ff,  req_dcache_info_next)
-
-//      CLK    RST                DOUT                    DIN                      DEF
-`RST_FF(clock, reset | flush_alu, req_dcache_valid_ff,   req_dcache_valid_next,   1'b0)
-`RST_FF(clock, reset | flush_alu, req_wb_mem_blocked_ff, req_wb_mem_blocked_next, 1'b0)
+logic            [`THR_PER_CORE-1:0] req_dcache_valid_ff;
+logic            [`THR_PER_CORE-1:0] req_wb_mem_blocked_ff;
+dcache_request_t [`THR_PER_CORE-1:0] req_dcache_info_ff;
 
 // Request to WB stage in case ST/LD is not the oldest instr or dcache is not
 // ready
@@ -103,32 +132,59 @@ assign req_wb_mem_blocked_next = (flush_alu)       ? 1'b0 :
                                  (stall_decode_ff) ? wb_mem_blocked_type : // was blocked waiting for reg value
                                                      req_alu_valid & wb_mem_blocked_type;
 
-assign req_wb_mem_blocked = req_wb_mem_blocked_ff;
-
-assign req_wb_dcache_info = req_dcache_info_ff;
+assign req_wb_mem_blocked       = req_wb_mem_blocked_ff[previous_thread];
+assign req_wb_dcache_info       = req_dcache_info_ff[previous_thread];
                                                   
 // Request to D$ stage in case ST/LD is the oldest instr on the pipe                                                  
 logic dcache_mem_type;
+logic [`THR_PER_CORE-1:0]  dcache_mem_type_ff;
+
 assign dcache_mem_type =   is_m_type_instr(req_alu_info.opcode)
-                         & dcache_ready
+                         & dcache_ready[thread_id]
                          & (rob_tail == req_alu_instr_id);
 
-assign req_dcache_valid_next = ( flush_alu           )    ? 1'b0 :     
-                               ( stall_decode        ) ? 1'b0 : 
-                               (  stall_decode_ff    ) ? dcache_mem_type : // was blocked waiting for reg value
-                               (  fetch_xcpt_valid
-                                | decode_xcpt_valid  ) ? 1'b0 :
-                                                         req_alu_valid & dcache_mem_type;
 
-assign req_dcache_valid = req_dcache_valid_ff;
+assign req_dcache_valid_next = ( flush_alu[thread_id]      ) ? 1'b0 :     
+                               ( stall_decode[thread_id]   ) ? 1'b0 : 
+                               ( stall_decode_ff[thread_id]) ? dcache_mem_type : // was blocked waiting for reg value
+                               (  fetch_xcpt_valid        
+                                | decode_xcpt_valid 
+                                | xcpt_alu.xcpt_overflow   ) ? 1'b0 : // in case of xcpt go to wb 
+                                                                (req_alu_valid & dcache_mem_type)
+                                                              | (req_alu_valid_ff[thread_id] & dcache_mem_type_ff[thread_id]);
 
-assign req_dcache_info  = req_dcache_info_ff;
+assign req_dcache_valid = req_dcache_valid_ff[previous_thread];
+assign req_dcache_info  = req_dcache_info_ff[previous_thread];
+assign req_dcache_thread_id = previous_thread;
 
+genvar ii;
+generate for (ii=0; ii < `THR_PER_CORE; ii++) 
+begin
+    logic update_ff;
+    assign update_ff = !stall_decode[ii] & (ii == thread_id); 
+    
+        //     CLK    RST                    EN         DOUT                     DIN                    DEF
+    `RST_EN_FF(clock, reset | flush_alu[ii], update_ff, req_dcache_valid_ff[ii], req_dcache_valid_next, '0)
+
+        //     CLK    RST                    EN         DOUT                       DIN                      DEF
+    `RST_EN_FF(clock, reset | flush_alu[ii], update_ff, req_wb_mem_blocked_ff[ii], req_wb_mem_blocked_next, '0)
+    
+        // CLK    EN         DOUT                    DIN                  
+    `EN_FF(clock, update_ff, req_dcache_info_ff[ii], req_dcache_info_next)
+
+        // CLK    EN         DOUT                    DIN                  
+    `EN_FF(clock, update_ff, dcache_mem_type_ff[ii], dcache_mem_type)
+end
+endgenerate
 
 ////////////////////////////////////
 // Request to WB
 
+//TODO FIXME : Add the case where we look at the opcode of the stored info
+//instead of the current value of the input in case the thread was waiting
+//for a register to be written
 logic alu_to_wb_intr;
+logic [`THR_PER_CORE-1:0]  alu_to_wb_intr_ff;
 
 assign alu_to_wb_intr = (  is_r_type_instr(req_alu_info.opcode) 
                          | is_mov_instr(req_alu_info.opcode) 
@@ -143,27 +199,41 @@ logic           tlb_id_next;
 tlb_req_info_t  tlb_req_info_next;
 
 logic               req_wb_valid_next;
-logic               req_wb_valid_ff;
 writeback_request_t req_wb_info_next;
-writeback_request_t req_wb_info_ff;
+logic [`THR_PER_CORE-1:0]               req_wb_valid_ff;
+writeback_request_t [`THR_PER_CORE-1:0] req_wb_info_ff;
 
-//     CLK    EN           DOUT             DIN
 
-//      CLK    RST                DOUT             DIN                DEF
-`RST_FF(clock, reset | flush_alu, req_wb_valid_ff, req_wb_valid_next, 1'b0)
-`RST_FF(clock, reset | flush_alu, req_wb_info_ff,  req_wb_info_next,  '0)
-
-assign req_wb_valid_next = ( flush_alu              ) ? 1'b0 :
-                           ( stall_decode           ) ? 1'b0 :
-                           (  stall_decode_ff       ) ? alu_to_wb_intr : // was blocked waiting for reg value
+assign req_wb_valid_next = ( flush_alu[thread_id]       ) ? 1'b0 :
+                           ( stall_decode[thread_id]    ) ? 1'b0 :
+                           (  stall_decode_ff[thread_id]) ? alu_to_wb_intr : // was blocked waiting for reg value
                            (  fetch_xcpt_valid
-                            | decode_xcpt_valid     ) ? 1'b1 : 
-                                                        req_alu_valid & alu_to_wb_intr;
+                            | decode_xcpt_valid         
+                            | xcpt_alu.xcpt_overflow    ) ? 1'b1 : 
+                                                             (req_alu_valid & alu_to_wb_intr)
+                                                           | (req_alu_valid_ff[thread_id] & alu_to_wb_intr_ff[thread_id]);
 
-assign req_wb_valid = req_wb_valid_ff;
+                                                    
+assign req_wb_valid     = (flush_alu[previous_thread]) ? 1'b0 : req_wb_valid_ff[previous_thread];
+assign req_wb_info      = req_wb_info_ff[previous_thread];
+assign req_wb_thread_id = previous_thread;
 
-// xcpt must be 0
-assign req_wb_info  = req_wb_info_ff;
+genvar kk;
+generate for (kk=0; kk < `THR_PER_CORE; kk++) 
+begin
+    logic update_ff;
+    assign update_ff = !stall_decode[kk] & (kk == thread_id); 
+    
+        //     CLK    RST                    EN         DOUT                 DIN                DEF
+    `RST_EN_FF(clock, reset | flush_alu[kk], update_ff, req_wb_valid_ff[kk], req_wb_valid_next, '0)
+    
+        // CLK    EN         DOUT                    DIN                  
+    `EN_FF(clock, update_ff, req_wb_info_ff[kk], req_wb_info_next)
+
+        // CLK    EN         DOUT                   DIN                  
+    `EN_FF(clock, update_ff, alu_to_wb_intr_ff[kk], alu_to_wb_intr)
+end
+endgenerate
 
 logic   [`REG_FILE_DATA_RANGE]  rf_data;
 
@@ -341,7 +411,7 @@ begin
 	begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) + `ZX(`ALU_OVW_DATA_WIDTH,rb_data);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow = (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0);
+        xcpt_alu.xcpt_overflow = (req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
     end
     // SUB
 	else if (req_alu_info.opcode == `INSTR_SUB_OPCODE)
@@ -353,21 +423,21 @@ begin
     begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) + `ZX(`ALU_OVW_DATA_WIDTH,req_alu_info.offset);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow = (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0);
+        xcpt_alu.xcpt_overflow = (req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
     end
     //SLL
     else if (req_alu_info.opcode == `INSTR_SLL_OPCODE)
     begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) << `ZX(`ALU_OVW_DATA_WIDTH,req_alu_info.offset);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow = (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0);
+        xcpt_alu.xcpt_overflow = (req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
     end
     //SRL
     else if (req_alu_info.opcode == `INSTR_SRL_OPCODE)
     begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) >> `ZX(`ALU_OVW_DATA_WIDTH,req_alu_info.offset);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow = (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0);
+        xcpt_alu.xcpt_overflow = (req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
     end
     // MEM
 	else if (is_m_type_instr(req_alu_info.opcode)) 
@@ -401,8 +471,8 @@ begin
         // Check possible overflow
         req_dcache_info_next.addr   =  oper_data[`REG_FILE_DATA_RANGE];
         req_dcache_info_next.data   =  oper_data_2[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow =   (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0)
-                                      | (oper_data_2[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0);
+        xcpt_alu.xcpt_overflow      =   (req_alu_valid) ? (  (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0)
+                                                           | (oper_data_2[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0)) : 1'b0;
     end	
     // BEQ
 	else if (req_alu_info.opcode == `INSTR_BEQ_OPCODE) 
