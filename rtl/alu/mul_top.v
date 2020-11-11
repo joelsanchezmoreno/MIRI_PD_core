@@ -24,6 +24,7 @@ module mul_top
     // Request to WB stage
     output  logic                           req_wb_valid,
     output  writeback_request_t             req_wb_info,
+    output  logic [`THR_PER_CORE_WIDTH-1:0] req_to_wb_thread_id,
 
     // Bypasses
         // Reorder buffer
@@ -405,13 +406,24 @@ writeback_request_t [`THR_PER_CORE-1:0] req_wb_info_ff;
 
 logic [`THR_PER_CORE_WIDTH-1:0] mul_stage_thread_id;
 
+logic fetch_xcpt_valid;
+logic decode_xcpt_valid;
+logic mul_xcpt_valid;
+
 // Request to WB
 always_comb
 begin
     mul_stage_thread_id  = mul_thread_id_ff[`MUL_STAGES];
+    assign fetch_xcpt_valid  =   mul_xcpt_fetch_ff[mul_stage_thread_id][`MUL_STAGES].xcpt_itlb_miss
+                               | mul_xcpt_fetch_ff[mul_stage_thread_id][`MUL_STAGES].xcpt_bus_error;
+    assign decode_xcpt_valid = mul_xcpt_decode_ff[mul_stage_thread_id][`MUL_STAGES].xcpt_illegal_instr;
+    assign mul_xcpt_valid    = mul_xcpt_stages_ff[mul_stage_thread_id][`MUL_STAGES].xcpt_overflow;
 
     req_wb_valid_next = (flush_mul[mul_stage_thread_id]   ) ? 1'b0 :
-                        (stall_decode[mul_stage_thread_id]) ? 1'b0 : 
+                        (stall_decode[mul_stage_thread_id]) ? 1'b0 :
+                        (  fetch_xcpt_valid
+                         | decode_xcpt_valid   
+                         | mul_xcpt_valid                 ) ? 1'b1 : 
                                                               instr_valid_ff[`MUL_STAGES];
   
     req_wb_info_next.instr_id    = instr_id_ff[mul_stage_thread_id][`MUL_STAGES];
@@ -432,20 +444,21 @@ begin
     req_wb_info_next.xcpt_cache   = '0;
 end
 
-assign req_wb_valid = (flush_mul[previous_thread]) ? 1'b0 : req_wb_valid_ff[previous_thread];
-assign req_wb_info  = req_wb_info_ff[previous_thread];
+assign req_wb_valid         = (flush_mul[previous_thread]) ? 1'b0 : req_wb_valid_ff[previous_thread];
+assign req_wb_info          = req_wb_info_ff[previous_thread];
+assign req_to_wb_thread_id  = previous_thread;
 
-genvar pp;
-generate for (pp=0; pp < `THR_PER_CORE; pp++) 
+genvar kk;
+generate for (kk=0; kk < `THR_PER_CORE; kk++) 
 begin
     logic update_ff;
-    assign update_ff = !stall_decode[pp] & (pp == thread_id); 
+    assign update_ff = !stall_decode[kk] & (kk == thread_id); 
     
         //     CLK    RST                    EN         DOUT                 DIN                DEF
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_ff, req_wb_valid_ff[pp], req_wb_valid_next, '0)
+    `RST_EN_FF(clock, reset | flush_mul[kk], update_ff, req_wb_valid_ff[kk], req_wb_valid_next, '0)
     
         // CLK    EN         DOUT                    DIN                  
-    `EN_FF(clock, update_ff, req_wb_info_ff[pp], req_wb_info_next)
+    `EN_FF(clock, update_ff, req_wb_info_ff[kk], req_wb_info_next)
 end
 endgenerate
 
