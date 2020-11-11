@@ -126,10 +126,13 @@ logic          [`THR_PER_CORE-1:0]          req_to_alu_valid_ff;
 alu_request_t  [`THR_PER_CORE-1:0]          req_to_alu_info_ff;
 logic [`THR_PER_CORE-1:0] [`PC_WIDTH-1:0]   req_to_alu_pc_ff;
 
-assign req_to_alu_valid_next =  ( flush_decode[thread_id] ) ? 1'b0       : // Invalidate instruction
-                                ( stall_decode[thread_id] ) ? 1'b0       :
-                                ( fetch_instr_valid       ) ? !mul_instr : // New instruction from fetch and not MUL
-                                                              1'b0;
+assign req_to_alu_valid_next =  ( flush_decode[thread_id]   ) ? 1'b0       : // Invalidate instruction
+                                ( stall_decode[thread_id]   ) ? 1'b0       :
+                                ( fetch_instr_valid         ) ? !mul_instr : // New instruction from fetch and not MUL
+                                (  xcpt_fetch.xcpt_itlb_miss
+                                 | xcpt_fetch.xcpt_bus_error
+                                 | decode_xcpt_next.xcpt_illegal_instr) ? 1'b1: // There has been an xcpt
+                                                                1'b0;
 
 assign req_to_alu_valid     = (flush_decode[previous_thread]) ? 1'b0 : req_to_alu_valid_ff[previous_thread];
 assign req_to_alu_info      = req_to_alu_info_ff[previous_thread];
