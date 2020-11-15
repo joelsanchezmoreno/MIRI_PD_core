@@ -28,6 +28,7 @@ module mul_top
 
     // Bypasses
         // Reorder buffer
+    output  logic [`THR_PER_CORE_WIDTH-1:0] rob_thread_id,
     output  logic [`ROB_ID_RANGE]           rob_src1_id,
     output  logic [`ROB_ID_RANGE]           rob_src2_id,
     input   logic                           rob_src1_hit,
@@ -161,7 +162,7 @@ genvar pp;
 generate for (pp=0; pp < `THR_PER_CORE; pp++) 
 begin
     logic update_ff;
-    assign update_ff = (thread_id == pp);
+    assign update_ff = !stall_decode[pp] & (thread_id == pp);
 
         //     CLK   RST                     EN         DOUT                  DIN            DEF
     `RST_EN_FF(clock, reset | flush_mul[pp], update_ff, req_mul_valid_ff[pp], req_mul_valid, 1'b0)
@@ -189,6 +190,7 @@ integer ll;
 
 always_comb
 begin
+    rob_thread_id = thread_id;
     // Bypass values from RoB
     if (req_mul_valid)
     begin
