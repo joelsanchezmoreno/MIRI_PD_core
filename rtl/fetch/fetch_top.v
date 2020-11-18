@@ -40,7 +40,7 @@ module fetch_top
 
     // New entry for iTLB
     input   logic                               new_tlb_entry,
-    input   logic                               new_tlb_thread_id,
+    input   logic [`THR_PER_CORE_WIDTH-1:0]     new_tlb_thread_id,
     input   tlb_req_info_t                      new_tlb_info
  );
  
@@ -271,7 +271,7 @@ icache(
 );
 
 
-logic  [`THR_PER_CORE-1:0] tlb_wr_priv;
+logic  tlb_wr_priv;
 
 tlb_cache
 itlb

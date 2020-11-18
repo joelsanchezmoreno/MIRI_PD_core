@@ -162,7 +162,8 @@ genvar pp;
 generate for (pp=0; pp < `THR_PER_CORE; pp++) 
 begin
     logic update_ff;
-    assign update_ff = !stall_decode[pp] & (thread_id == pp);
+    assign update_ff = req_mul_valid & (thread_id == pp);
+
 
         //     CLK   RST                     EN         DOUT                  DIN            DEF
     `RST_EN_FF(clock, reset | flush_mul[pp], update_ff, req_mul_valid_ff[pp], req_mul_valid, 1'b0)
@@ -172,13 +173,16 @@ begin
     `EN_FF(clock, update_ff, req_mul_instr_id_ff[pp], req_mul_instr_id)
     `EN_FF(clock, update_ff, req_mul_pc_ff[pp],       req_mul_pc)
 
-        //      CLK   RST                    EN         DOUT                   DIN                       DEF
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_ff, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_ff, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
+    logic update_rob;
+    assign update_rob = (pp == thread_id);
+
+        //      CLK   RST                    EN          DOUT                   DIN                       DEF
+    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
+    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
     
-    //         CLK    RST                    EN         DOUT                 DIN
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_ff, rob_src1_id_ff[pp], rob_src1_id)
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_ff, rob_src2_id_ff[pp], rob_src2_id)
+    //         CLK    RST                    EN          DOUT                 DIN
+    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src1_id_ff[pp], rob_src1_id)
+    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src2_id_ff[pp], rob_src2_id)
 
     //     CLK   EN                     DOUT                   DIN
     `EN_FF(clock, update_rob_data1[pp], rob_src1_data_ff[pp], (rob_src1_hit & update_ff) ? rob_src1_data: writeValRF)
@@ -316,7 +320,6 @@ begin
     instr_id_next[thread_id][0]        = (req_mul_valid) ? req_mul_instr_id : req_mul_instr_id_ff[thread_id];
     instr_valid_next[thread_id][0]     = ( flush_mul[thread_id]       ) ? 1'b0 :
                                          ( stall_decode[thread_id]    ) ? 1'b0 :
-                                         ( stall_decode_ff[thread_id] ) ? 1'b1 :
                                                                           req_mul_valid | req_mul_valid_ff[thread_id];
 
     req_wb_pc_next[thread_id][0]       = (req_mul_valid) ? req_mul_pc : req_mul_pc_ff[thread_id];
@@ -401,10 +404,17 @@ begin : gen_mul_stages
 end
 endgenerate
 
-logic                                   req_wb_valid_next;
-writeback_request_t                     req_wb_info_next;
-logic               [`THR_PER_CORE-1:0] req_wb_valid_ff;
-writeback_request_t [`THR_PER_CORE-1:0] req_wb_info_ff;
+logic                   req_wb_valid_next;
+writeback_request_t     req_wb_info_next;
+logic                   req_wb_valid_ff;
+writeback_request_t     req_wb_info_ff;
+
+    //     CLK    RST                    DOUT             DIN                DEF
+`RST_EN_FF(clock, reset | flush_mul[kk], req_wb_valid_ff, req_wb_valid_next, '0)
+
+    // CLK    DOUT                DIN                  
+`EN_FF(clock, req_wb_info_ff, req_wb_info_next)
+
 
 logic [`THR_PER_CORE_WIDTH-1:0] mul_stage_thread_id;
 
@@ -446,23 +456,10 @@ begin
     req_wb_info_next.xcpt_cache   = '0;
 end
 
-assign req_wb_valid         = (flush_mul[previous_thread]) ? 1'b0 : req_wb_valid_ff[previous_thread];
-assign req_wb_info          = req_wb_info_ff[previous_thread];
+assign req_wb_valid         = (flush_mul[previous_thread]) ? 1'b0 : req_wb_valid_ff;
+assign req_wb_info          = req_wb_info_ff;
 assign req_to_wb_thread_id  = previous_thread;
 
-genvar kk;
-generate for (kk=0; kk < `THR_PER_CORE; kk++) 
-begin
-    logic update_ff;
-    assign update_ff = !stall_decode[kk] & (kk == thread_id); 
-    
-        //     CLK    RST                    EN         DOUT                 DIN                DEF
-    `RST_EN_FF(clock, reset | flush_mul[kk], update_ff, req_wb_valid_ff[kk], req_wb_valid_next, '0)
-    
-        // CLK    EN         DOUT                    DIN                  
-    `EN_FF(clock, update_ff, req_wb_info_ff[kk], req_wb_info_next)
-end
-endgenerate
 
 /////////////////////////////////
 // VERBOSE
