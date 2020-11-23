@@ -176,19 +176,6 @@ begin
     end
 end
 
-logic [`ICACHE_NUM_SET_RANGE] update_set;  
-logic [`ICACHE_WAYS_PER_SET_RANGE] update_way;  
-
-assign update_set = (rsp_valid_miss &
-                     !rsp_bus_error) ? miss_icache_set_ff[rsp_thread_id] :
-                    (icache_hit)     ? req_addr_set :
-                    '0;
-
-assign update_way = (rsp_valid_miss &
-                     !rsp_bus_error) ? miss_icache_way_ff[rsp_thread_id] :
-                    (icache_hit)     ? hit_way            :
-                    '0;              
-                
 // This module returns the oldest way accessed for a given set and updates the
 // the LRU logic when there's a hit on the I$ or we bring a new line                        
 cache_lru_mt
@@ -213,11 +200,16 @@ icache_lru
     // Victim way
     .victim_way         ( miss_icache_way   ),
 
-    // Update the LRU logic
-    .update_req         ( (rsp_valid_miss &
-                           !rsp_bus_error) | icache_hit ),
-    .update_set         ( update_set                    ),
-    .update_way         ( update_way                    )
+    // Update the LRU logic in case of hit in the active thread
+    .update_req         ( icache_hit        ),
+    .update_set         ( req_addr_set      ),
+    .update_way         ( hit_way           ),
+
+    // Update the LRU logic in case of rsp from memory
+    .update_req_mt      ( rsp_valid_miss & !rsp_bus_error   ),
+    .update_set_mt      ( miss_icache_set_ff[rsp_thread_id] ),
+    .update_way_mt      ( miss_icache_way_ff[rsp_thread_id] ),
+    .update_thread_mt   ( rsp_thread_id                     )
 );
 
 endmodule 

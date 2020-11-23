@@ -22,11 +22,17 @@ module cache_lru
     input   logic  [NUM_SET_W-1:0]      victim_set,
     output  logic  [WAYS_PER_SET_W-1:0] victim_way,
 
-    // Update the set LRU only when the hit is from the same thread
-    input   logic                       update_req,
-    input   logic  [NUM_SET_W-1:0]      update_set,
-    input   logic  [WAYS_PER_SET_W-1:0] update_way
- );
+    // Update the set LRU only when the hit is from the thread_id
+    input   logic                               update_req,
+    input   logic  [NUM_SET_W-1:0]              update_set,
+    input   logic  [WAYS_PER_SET_W-1:0]         update_way
+
+    // Update the set LRU for a second thread if needed (e.g. rsp from memory)
+    input   logic                               update_req_mt,
+    input   logic  [NUM_SET_W-1:0]              update_set_mt,
+    input   logic  [WAYS_PER_SET_W-1:0]         update_way_mt,
+    input   logic  [`THR_PER_CORE_WIDTH-1:0]    update_thread_mt,
+);
 
 logic [WAYS_PER_SET_W-1:0] victim_per_set [NUM_SET-1:0];
 
@@ -83,7 +89,7 @@ generate
                 end //else - multithreaded
             end
         
-            // Replace victim with the new line
+                // Update in case of hit in the line
             if (update_req && update_set == gen_it)
             begin
                 // If Single Threaded then we look all the ways
@@ -114,8 +120,40 @@ generate
 
                 // We reset the counter for the new block
                 counter[update_way] = '0;
-
             end // if (update_req)
+
+                // Replace victim with the new line
+            if (update_req_mt && update_set_mt == gen_it)
+            begin
+                // If Single Threaded then we look all the ways
+                if (mt_mode == Single_Threaded)
+                begin
+                    for (way_num_aux = 0; way_num_aux < WAYS_PER_SET; way_num_aux++)
+                    begin
+                        // we increase in one the ways as they get older
+                        if (counter_ff[way_num_aux] <= counter_ff[update_way_mt])
+                            counter[way_num_aux] = counter_ff[way_num_aux] + 1'b1;
+                    end
+                end
+                // If Multi Threaded then we look only the ways belonging
+                // to the thread and increase them as they get older
+                else 
+                begin
+                    for (way_num_aux = 0; way_num_aux < WAYS_PER_SET ; way_num_aux++)
+                    begin                        
+                        if (   (way_num_aux >= (update_thread_mt * `NUM_WAYS_MT)) // bottom limit
+                            && (way_num_aux <  (update_thread_mt * `NUM_WAYS_MT +`NUM_WAYS_MT)) // upper limit
+                            && (max_count < counter_ff[way_num_aux]))
+                        begin
+                            if (counter_ff[way_num_aux] <= counter_ff[update_way_mt])
+                               counter[way_num_aux] = counter_ff[way_num_aux] + 1'b1;
+                        end
+                    end // for
+                end //else - multithreaded
+
+                // We reset the counter for the new block
+                counter[update_way_mt] = '0;
+            end // if (update_req_mt)
         end // always_comb
     end // for (gen_it = 0; gen_it < NUM_SET; gen_it++)
 endgenerate
