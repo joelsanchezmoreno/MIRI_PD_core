@@ -146,11 +146,12 @@ typedef enum logic [1:0] {
    Word            = 2'b11  // 32b
 } req_size_t;
 
-typedef enum logic [1:0] {
-   idle            = 2'b00, 
-   evict_line      = 2'b01, 
-   bring_line      = 2'b10, 
-   write_cache_line= 2'b11
+typedef enum logic [2:0] {
+   idle             = 3'b000, 
+   evict_line       = 3'b001, 
+   bring_line       = 3'b010, 
+   write_cache_line = 3'b011
+   pendent_request  = 3'b100
 } dcache_state_t;
 
 typedef enum logic [0:0] {
