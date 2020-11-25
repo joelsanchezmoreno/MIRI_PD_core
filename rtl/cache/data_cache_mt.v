@@ -10,7 +10,7 @@ module data_cache
     input   logic                               clock,
     input   logic                               reset,
     output  logic [`THR_PER_CORE-1:0]           dcache_ready,
-    input  multithreading_mode_t                mt_mode,
+    input   multithreading_mode_t               mt_mode,
     input   logic [`THR_PER_CORE_WIDTH-1:0]     active_thread_id,
 
     // Exception
@@ -22,6 +22,7 @@ module data_cache
 
     // Response to the core pipeline
     output  logic [`DCACHE_MAX_ACC_SIZE-1:0]    rsp_data,
+    output  logic                               rsp_error, //conditional error
     output  logic                               rsp_valid,
 
     // Request to the memory hierarchy
@@ -57,18 +58,45 @@ arbiter_priority
 #(.NUM_ENTRIES(`THR_PER_CORE))
 arb_prio_mm
 (
-    // client side
-    input   logic [NUM_ENTRIES-1:0]     .client_valid   ( req_valid_miss_arb    ),
-    input   logic [NUM_ENTRIES_LOG-1:0] .top_client     ( active_thread_id      ),  // give priority to active thread
-    output  logic [NUM_ENTRIES-1:0]     .client_ready   ( '1                    ),  // threads always ready to send req
-    output  logic [NUM_ENTRIES_LOG-1:0] .winner         ( arb_winner            ),
+    .client_valid   ( req_valid_miss_arb    ),
+    .top_client     ( active_thread_id      ),  // give priority to active thread
+    .client_ready   ( '1                    ),  // threads always ready to send req
+    .winner         ( arb_winner            ),
     
-    // destination side
-    output  logic                       .valid          ( req_valid_miss        ),
-    input   logic                       .ready          ( 1'b1                  )
+    .valid          ( req_valid_miss        ),
+    .ready          ( 1'b1                  )
 );
 
 assign req_info_miss = req_info_miss_arb[arb_winner];
+
+///////////////////////////////////
+// Thread waits for a request from another thread
+logic [`THR_PER_CORE-1:0][`DCACHE_TAG_RANGE]        blocked_by_thread_tag;
+logic [`THR_PER_CORE-1:0][`DCACHE_TAG_RANGE]        blocked_by_thread_tag_ff;
+logic [`THR_PER_CORE-1:0][`THR_PER_CORE_WIDTH-1:0]  blocked_by_thread_id;
+logic [`THR_PER_CORE-1:0][`THR_PER_CORE_WIDTH-1:0]  blocked_by_thread_id_ff;
+logic [`THR_PER_CORE-1:0]                           blocked_by_thread_valid;
+logic [`THR_PER_CORE-1:0]                           blocked_by_thread_valid_ff;
+
+//      CLK    RST    DOUT                        DIN                      DEF
+`RST_FF(clock, reset, blocked_by_thread_valid_ff, blocked_by_thread_valid, '0)
+
+//  CLK    DOUT                      DIN       
+`FF(clock, blocked_by_thread_tag_ff, blocked_by_thread_tag)
+`FF(clock, blocked_by_thread_id_ff,  blocked_by_thread_id)
+
+///////////////////////////////////
+// Reserved ways through conditional load/store
+logic [`DCACHE_NUM_WAYS_R][`THR_PER_CORE_WIDTH] dCache_reserved_way;
+logic [`DCACHE_NUM_WAYS_R][`THR_PER_CORE_WIDTH] dCache_reserved_way_ff;
+logic [`DCACHE_NUM_WAYS_R]                      dCache_reserved_valid;
+logic [`DCACHE_NUM_WAYS_R]                      dCache_reserved_valid_ff;
+
+//      CLK    RST    DOUT                      DIN                    DEF
+`RST_FF(clock, reset, dCache_reserved_valid_ff, dCache_reserved_valid, '0)
+
+//  CLK    DOUT                      DIN       
+`FF(clock, dCache_reserved_way_ff, dCache_reserved_way)
 
 
 ///////////////////////////////////
@@ -206,6 +234,7 @@ req_size_t [`THR_PER_CORE-1:0]                  req_size  ;
 
 integer thread_id;    
 integer iter;
+integer thr;
 
 always_comb
 begin        
@@ -219,22 +248,33 @@ begin
     dCache_data         = dCache_data_ff;
     dCache_dirty        = dCache_dirty_ff;
 
-        // Control signals
+        // Control signals to allocate new lines
     req_target_pos      = req_target_pos_ff;
+    pending_req         = pending_req_ff;
 
+        // Control signals for main memory request tracking
+    blocked_by_thread_valid = blocked_by_thread_valid_ff;
+    blocked_by_thread_id    = blocked_by_thread_id_ff;
+    blocked_by_thread_tag   = blocked_by_thread_tag_ff;
+       
+        // Control signals for conditional operations
+   dCache_reserved_valid    = dCache_reserved_valid_ff;
+   dCache_reserved_way      = dCache_reserved_way_ff;
+   
         // Arbiter
     req_valid_miss_arb  = '0;
     dcache_state_aux    = dcache_state_aux_ff;
     req_info_miss_arb   = req_info_miss_arb_ff;
 
+        // Store Buffer
     search_store_buffer = '0;
 
         // Exception
     xcpt_bus_error = 1'b0;
 
-    pending_req         = pending_req_ff;
 
     rsp_valid       = 1'b0;
+    rsp_error       = 1'b0;
     dcache_tags_hit = 1'b0;
 
     // Mantain values for next clock
@@ -293,17 +333,33 @@ begin
                     // If there is a ST hit we push the request to the store buffer
                     if (dcache_tags_hit & req_info.is_store)
                     begin
-                        //FIXME.TODO. Merge requests if there are more on the store buffer
-                        //            with same tag?
-                        rsp_valid = 1'b1;
-                        store_buffer_push_info.addr = req_info.addr;
-                        store_buffer_push_info.way  = hit_way;
-                        store_buffer_push_info.size = req_info.size;
-                        store_buffer_push_info.data = req_info.data;
-                        `ifdef VERBOSE_DCACHE
-                            $display("[DCACHE] D$ hit and store -- adding req to store buffer");
-                            $display("          addr = %h",req_info.addr);
-                        `endif
+                        if (  (!dCache_reserved_valid_ff[hit_way]) 
+                            | ( dCache_reserved_way_ff[hit_way] == thread_id))
+                        begin
+                                // Remove reserved once STC has been performed
+                            dCache_reserved_valid[hit_way] = 1'b0;
+
+                            //FIXME.TODO. Merge requests if there are more on the store buffer
+                            //            with same tag?
+                            rsp_valid = 1'b1;
+                            store_buffer_push_info.addr = req_info.addr;
+                            store_buffer_push_info.way  = hit_way;
+                            store_buffer_push_info.size = req_info.size;
+                            store_buffer_push_info.data = req_info.data;
+                            store_buffer_push_info.thread_id = active_thread_id;
+                            `ifdef VERBOSE_DCACHE
+                                $display("[DCACHE] D$ hit and store -- adding req to store buffer");
+                                $display("          addr = %h",req_info.addr);
+                            `endif
+                        end
+                        // If it is a ST conditional but the way was not reserved 
+                        // for this thread. Return error.
+                        else 
+                        begin
+                            rsp_valid = 1'b1;
+                            rsp_error = 1'b1;
+                            rsp_data  = '1;
+                        end
                     end
 
                     // If there is a LD hit we evaluate the conditions of that hit
@@ -311,6 +367,11 @@ begin
                     // modify the same line
                     else if (dcache_tags_hit & !req_info.is_store) //LD_hit
                     begin
+                            // Reserve way if conditional LD
+                        dCache_reserved_valid[hit_way] |= req_info.conditional;
+                        if (req_info.conditional)
+                            dCache_reserved_way[hit_way] = thread_id;
+
                         // If there is no store waiting to modify that line we return
                         // the data
                         if (!store_buffer_hit_tag[thread_id])
@@ -351,60 +412,113 @@ begin
                     begin
                         dcache_ready_next[thread_id]   = 1'b0;
 
-                        // If there is a request on the store buffer that targets
-                        // the way we want to replace, we need to perform the ST
-                        // and then evict the line
-                        if (store_buffer_hit_way[thread_id])
+                            // Reserve way if conditional LD. Report error if
+                            // conditional ST and no reservation was done
+                        if (req_info.conditional)
                         begin
-                            pending_req[thread_id]   = req_info;
-                            dcache_state[thread_id]  = write_cache_line;
-                        end
-                        // If there are NO requests on the store buffer that targets
-                        // the line we want to replace. Then, we can evict the line
-                        // if needed 
-                        else 
-                        begin
-                            // If the data is dirty on the cache we have to evict
-                            if ( dCache_dirty_ff[req_target_pos[thread_id]] )
+                            if (!req_info.is_store) // If load
                             begin
-                                `ifdef VERBOSE_DCACHE
-                                    $display("[DCACHE] D$ miss and dirty -- send evict request to main memory");
-                                    $display("         addr = %h",req_info.addr);
-                                    $display("    dirty pos = %h",req_target_pos[thread_id]);
-                                `endif
-                                // Send request to evict the line
-                                req_info_miss_arb[thread_id].addr     = ( {dCache_tag[req_target_pos[thread_id]],req_set[thread_id], 
-                                                                          {`DCACHE_OFFSET_WIDTH{1'b0}}} >> `DCACHE_ADDR_RSH_VAL);
-                                req_info_miss_arb[thread_id].is_store = 1'b1;
-                                req_info_miss_arb[thread_id].data     = dCache_data_ff[req_target_pos[thread_id]];
-                                req_valid_miss_arb[thread_id]         = 1'b1;
-                                
-                                // Invalidate the line
-                                dCache_valid[req_target_pos[thread_id]] = 1'b0;
-                                dCache_dirty[req_target_pos[thread_id]] = 1'b0;
-
-                                // Next stage
-                                pending_req[thread_id]     = req_info;                    
-                                dcache_state[thread_id]    = evict_line;
+                                dCache_reserved_valid[req_target_pos[thread_id]]  = 1'b1;
+                                dCache_reserved_way[req_target_pos[thread_id]]    = thread_id;
                             end
-                            // If the line is not dirty on the cache we just need to bring
-                            // the new one.
-                            else 
+                            else // If store
                             begin
-                                `ifdef VERBOSE_DCACHE
-                                    $display("[DCACHE] D$ miss and NOT dirty -- send miss request to main memory");
-                                    $display("         addr = %h",req_info.addr);
-                                `endif
+                                if(dCache_reserved_way_ff[req_target_pos[thread_id]] != thread_id))
+                                begin
+                                    rsp_valid = 1'b1;
+                                    rsp_error = 1'b1;
+                                    rsp_data  = '1;
+                                    dcache_ready_next[thread_id]   = 1'b1;
+                                end
+                            end
+                        end
+                        if (!rsp_error)
+                        begin
+                            // We evaluate if a different thread failed to get the
+                            // same tag, if that is the case we then move to
+                            // bring_line and wait for the other thread to
+                            // receive the response from memory
+                            for(thr = 0; thr < `THR_PER_CORE; thr++)
+                            begin
+                               if(  blocked_by_thread_valid_ff[thr]
+                                  & blocked_by_thread_tag_ff[thr] == req_tag[thread_id])
+                               begin
+                                   blocked_by_thread_id[thread_id] = thr;
+                                   dcache_state[thread_id] = bring_line;
+                               end
+                            end
+                            // If we found that we're blocked by another thread,
+                            // then do nothing and go to bring line
+                            if (dcache_state[thread_id] == bring_line)
+                            begin
+                                // If there is a request on the store buffer that targets
+                                // the way we want to replace, we need to perform the ST
+                                // and then evict the line
+                                if (store_buffer_hit_way[thread_id])
+                                begin
+                                    pending_req[thread_id]   = req_info;
+                                    dcache_state[thread_id]  = write_cache_line;
+                                end
+                                // If there are NO requests on the store buffer that targets
+                                // the line we want to replace. Then, we can evict the line
+                                // if needed 
+                                else 
+                                begin
+                                    // If the data is dirty on the cache we have to evict
+                                    if ( dCache_dirty_ff[req_target_pos[thread_id]] )
+                                    begin
+                                        `ifdef VERBOSE_DCACHE
+                                            $display("[DCACHE] D$ miss and dirty -- send evict request to main memory");
+                                            $display("         addr = %h",req_info.addr);
+                                            $display("    dirty pos = %h",req_target_pos[thread_id]);
+                                        `endif
+                                        // Send request to evict the line
+                                        req_info_miss_arb[thread_id].addr     = ( {dCache_tag[req_target_pos[thread_id]],req_set[thread_id], 
+                                                                                  {`DCACHE_OFFSET_WIDTH{1'b0}}} >> `DCACHE_ADDR_RSH_VAL);
+                                        req_info_miss_arb[thread_id].is_store = 1'b1;
+                                        req_info_miss_arb[thread_id].data     = dCache_data_ff[req_target_pos[thread_id]];
+                                        req_valid_miss_arb[thread_id]         = 1'b1;
+                                        
+                                        // Invalidate the line
+                                        dCache_valid[req_target_pos[thread_id]] = 1'b0;
+                                        dCache_dirty[req_target_pos[thread_id]] = 1'b0;
 
-                                req_info_miss_arb[thread_id].addr      = req_info.addr >> `DCACHE_ADDR_RSH_VAL;
-                                req_info_miss_arb[thread_id].is_store  = 1'b0;                            
-                                req_valid_miss_arb[thread_id]          = 1'b1;
+                                        // Save pendent request addr (for future miss)
+                                        // on the MM array such that if a new thread
+                                        // asks for the same line, we block it
+                                        blocked_by_thread_tag[thread_id]    = req_tag[thread_id];
+                                        blocked_by_thread_valid[thread_id]  = 1'b1;
 
-                                // Next stage
-                                pending_req[thread_id]  = req_info;                    
-                                dcache_state[thread_id] = bring_line;
-                            end //!dCache_dirty_ff[req_target_pos[thread_id]]
-                        end // store_buffer_hit_way
+                                        // Next stage
+                                        pending_req[thread_id]     = req_info;                    
+                                        dcache_state[thread_id]    = evict_line;
+                                    end
+                                    // If the line is not dirty on the cache we just need to bring
+                                    // the new one.
+                                    else 
+                                    begin
+                                        `ifdef VERBOSE_DCACHE
+                                            $display("[DCACHE] D$ miss and NOT dirty -- send miss request to main memory");
+                                            $display("         addr = %h",req_info.addr);
+                                        `endif
+
+                                        req_info_miss_arb[thread_id].addr      = req_info.addr >> `DCACHE_ADDR_RSH_VAL;
+                                        req_info_miss_arb[thread_id].is_store  = 1'b0;                            
+                                        req_valid_miss_arb[thread_id]          = 1'b1;
+
+                                        // Save pendent request addr (for future miss)
+                                        // on the MM array such that if a new thread
+                                        // asks for the same line, we block it
+                                        blocked_by_thread_tag[thread_id]    = req_tag[thread_id];
+                                        blocked_by_thread_valid[thread_id]  = 1'b1;
+
+                                        // Next stage
+                                        pending_req[thread_id]  = req_info;                    
+                                        dcache_state[thread_id] = bring_line;
+                                    end //!dCache_dirty_ff[req_target_pos[thread_id]]
+                                end // store_buffer_hit_way
+                            end // blocked by another thread
+                        end //!rsp_error
                     end // !LD_hit
                 end // req_valid
                 else
@@ -451,7 +565,7 @@ begin
                     req_info_miss_arb[thread_id].addr      = pending_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL;
                     req_info_miss_arb[thread_id].is_store  = 1'b0;
                     req_valid_miss_arb[thread_id]          = 1'b1;
-                    
+
                     // Next stage:
                     //   - Go to bring_line if we were able to send request to main memory
                     //   - Go to pendent_request if we are waiting to send req to memory
@@ -468,12 +582,27 @@ begin
             // dcache_top
             bring_line:
             begin
+                // We wait until we receive the response from main memory. 
                 req_valid_miss_arb[thread_id] = 1'b0;
-                // We wait until we receive the response from main memory. Then, we update
-                // the tag, data and valid information for the position related to that
-                // tag 
-                if (rsp_valid_miss && (thread_id == rsp_thread_id))
+
+                // If the thread was waiting for another thread response, then
+                // we can unblock and move to next stage
+                if (  rsp_valid_miss 
+                    & blocked_by_thread_valid_ff[rsp_thread_id]
+                    & (blocked_by_thread_id_ff[thread_id] == rsp_thread_id))
+                begin                  
+                    dcache_ready_next[thread_id]   = 1'b1;
+                    dcache_state[thread_id]        = idle;
+                end
+
+                // Update the tag, data and valid information for the position related to that
+                // tag
+                if (  rsp_valid_miss & (thread_id == rsp_thread_id))
                 begin
+                    // Clear pendent request addr since thread_id has received the data and
+                    // will write it into memory
+                    blocked_by_thread_valid[thread_id]  = 1'b0;
+
                     xcpt_bus_error = rsp_bus_error;
                     rsp_valid      = (thread_id == active_thread_id);
                     if (!rsp_bus_error)
@@ -637,7 +766,7 @@ begin
                             dCache_dirty[req_target_pos_ff[thread_id]] = 1'b0;
 
                             // Next stage:
-                                //   - Go to bring_line if we were able to send request to main memory
+                                //   - Go to evict_line if we were able to send request to main memory
                                 //   - Go to pendent_request if we are waiting to send req to memory
                             if (winner == thread_id)
                                 dcache_state[thread_id] = evict_line;

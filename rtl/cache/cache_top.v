@@ -92,6 +92,7 @@ end
 // Signals from D$
 logic [`DCACHE_MAX_ACC_SIZE-1:0]    rsp_data_dcache;
 logic                               dcache_rsp_valid;
+logic                               dcache_rsp_error;
 
 // Signals for WB request
 logic                               req_wb_valid_next;
@@ -117,10 +118,14 @@ begin
     req_wb_info_next.tlb_id         = '0;
     req_wb_info_next.tlb_req_info   = '0;
                                  
-    req_wb_info_next.rf_wen         = (req_valid) ? !req_info.is_store : !req_info_ff[thread_id].is_store;
-    req_wb_info_next.rf_dest        = (req_valid) ? req_info.rd_addr   : req_info_ff[thread_id].rd_addr;
+    req_wb_info_next.rf_wen         = (req_valid) ? (dcache_rsp_error) ? 1'b1 : 
+                                                    !req_info.is_store : !req_info_ff[thread_id].is_store;
+
+    req_wb_info_next.rf_dest        = (req_valid) ? (dcache_rsp_error) ? `COND_ERR_REG_ADDR : 
+                                                    req_info.rd_addr   : req_info_ff[thread_id].rd_addr;
+
     req_wb_info_next.rf_data        = rsp_data_dcache ;
-                                 
+
     req_wb_info_next.xcpt_fetch     = (req_valid) ? req_info.xcpt_fetch  : req_info_ff[thread_id].xcpt_fetch;
     req_wb_info_next.xcpt_decode    = (req_valid) ? req_info.xcpt_decode : req_info_ff[thread_id].xcpt_decode;
     req_wb_info_next.xcpt_alu       = (req_valid) ? req_info.xcpt_alu    : req_info_ff[thread_id].xcpt_alu;
@@ -195,6 +200,7 @@ dcache
 
     // Response to the core pipeline
     .rsp_valid          ( dcache_rsp_valid  ),
+    .rsp_error          ( dcache_rsp_error  ),
     .rsp_data           ( rsp_data_dcache   ),
     
     // Request to the memory hierarchy

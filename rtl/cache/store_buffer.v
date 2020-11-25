@@ -18,12 +18,12 @@ module store_buffer
     input   store_buffer_t              push_info,
 
     // Look for the tag on the store buffer
-    input   logic                               search_valid,
-    input   logic [`DCACHE_TAG_RANGE]           search_tag,
-    input   logic [`DCACHE_WAYS_PER_SET_RANGE]  search_way,
-    output  logic                               search_rsp_hit_tag,
-    output  logic                               search_rsp_hit_way,
-    output  store_buffer_t                      search_rsp
+    input   logic [`THR_PER_CORE-1:0]                       search_valid,
+    input   logic [`THR_PER_CORE-1:0][`DCACHE_TAG_RANGE]    search_tag,
+    input   logic [`DCACHE_WAYS_PER_SET_RANGE]              search_way,
+    output  logic [`THR_PER_CORE-1:0]                       search_rsp_hit_tag,
+    output  logic [`THR_PER_CORE-1:0]                       search_rsp_hit_way,
+    output  store_buffer_t [`THR_PER_CORE-1:0]              search_rsp
  );
 
  ////////////////////////////////////////////////////////////////
@@ -80,9 +80,9 @@ assign oldest_info  = store_buffer_info_ff[oldest_id];
 // that hits on the store_buffer. Otherwise, if there are multiple stores for
 // the same TAG/line we could return first the newest one, and then the latest
 // one and if they target the same bytes we could be storing an old value.
-logic [`DCACHE_ST_BUFFER_ENTRIES_WIDTH-1:0] max_count_search_tag;
-logic [`DCACHE_ST_BUFFER_ENTRIES_WIDTH-1:0] max_count_search_way;
-logic [`DCACHE_ST_BUFFER_ENTRIES_WIDTH-1:0] search_oldest;
+logic [`THR_PER_CORE-1:0][`DCACHE_ST_BUFFER_ENTRIES_WIDTH-1:0] max_count_search_tag;
+logic [`THR_PER_CORE-1:0][`DCACHE_ST_BUFFER_ENTRIES_WIDTH-1:0] max_count_search_way;
+logic [`THR_PER_CORE-1:0][`DCACHE_ST_BUFFER_ENTRIES_WIDTH-1:0] search_oldest;
 
 
 genvar NODE_ID;
@@ -111,7 +111,7 @@ generate for(genvar i = 0; i < `DCACHE_ST_BUFFER_NUM_ENTRIES; ++i) begin
 end
 endgenerate
 
-integer j,k;
+integer j,k,thread_id;
 
 logic [`DCACHE_ST_BUFFER_ENTRIES_WIDTH-1:0] free_pos;
 
@@ -121,8 +121,8 @@ begin
     store_buffer_info   = store_buffer_info_ff;
     store_buffer_valid  = store_buffer_valid_ff;
 
-    search_rsp_hit_tag  = 1'b0;
-    search_rsp_hit_way  = 1'b0;
+    search_rsp_hit_tag  = '0;
+    search_rsp_hit_way  = '0;
 
     free_pos = '0;
     counter  = counter_ff;
@@ -154,52 +154,57 @@ begin
     // Search for a tag
     max_count_search_tag = '0;
     max_count_search_way = '0;
-    if (search_valid)
+    for (thread_id= 0; thread_id < `THR_PER_CORE; thread_id++)
     begin
-        for (k = 0; k < `DCACHE_ST_BUFFER_NUM_ENTRIES; k++)
+        if (search_valid[thread_id])
         begin
-            // We check if there is a request on the buffer for the requested
-            // TAG
-            if ( search_tag == store_buffer_info_ff[k].addr[`DCACHE_TAG_ADDR_RANGE]
-                 & store_buffer_valid_ff[k]  )
+            for (k = 0; k < `DCACHE_ST_BUFFER_NUM_ENTRIES; k++)
             begin
-                search_rsp_hit_tag  = 1'b1;
-                `ifdef VERBOSE_STORE_BUFFER
-                    $display("[STORE BUFFER] search_rsp_hit_tag has been asserted");
-                `endif
-                // We always return the oldest one if there are multiple hits
-                if ( max_count_search_tag <= counter_ff[k])
+                // We check if there is a request on the buffer for the requested
+                // TAG
+                if (  search_tag[thread_id] == store_buffer_info_ff[k].addr[`DCACHE_TAG_ADDR_RANGE]
+                    & store_buffer_valid_ff[k] 
+                    & store_buffer_info_ff[k].thread_id == thread_id )
                 begin
-                    max_count_search_tag = counter_ff[k];
-                    search_rsp           = store_buffer_info_ff[k];
-                    search_oldest        = k;
+                    search_rsp_hit_tag[thread_id]  = 1'b1;
+                    `ifdef VERBOSE_STORE_BUFFER
+                        $display("[STORE BUFFER] search_rsp_hit_tag has been asserted");
+                    `endif
+                    // We always return the oldest one if there are multiple hits
+                    if ( max_count_search_tag[thread_id] <= counter_ff[k])
+                    begin
+                        max_count_search_tag[thread_id] = counter_ff[k];
+                        search_rsp[thread_id]           = store_buffer_info_ff[k];
+                        search_oldest[thread_id]        = k;
+                    end
+                end
+
+                // We check if there is a request on the buffer for the requested
+                // way
+                if (   search_way[thread_id] == store_buffer_info_ff[k].way 
+                     & store_buffer_valid_ff[k]
+                     & store_buffer_info_ff[k].thread_id == thread_id  )
+                begin
+                    `ifdef VERBOSE_STORE_BUFFER
+                        $display("[STORE BUFFER] search_rsp_hit_way has been asserted");
+                    `endif
+                    search_rsp_hit_way[thread_id] = 1'b1;
+                    // We always return the oldest one if there are multiple hits.
+                    // In addition, we return the request that affects the way if
+                    // there is no request that affects the same TAG
+                    if (!search_rsp_hit_tag[thread_id] & (max_count_search_way[thread_id] <= counter_ff[k]))
+                    begin
+                        max_count_search_way[thread_id] = counter_ff[k];
+                        search_rsp[thread_id]           = store_buffer_info_ff[k];
+                        search_oldest[thread_id]        = k;
+                    end
                 end
             end
-
-            // We check if there is a request on the buffer for the requested
-            // way
-            if ( search_way == store_buffer_info_ff[k].way & store_buffer_valid_ff[k]  )
-            begin
-                `ifdef VERBOSE_STORE_BUFFER
-                    $display("[STORE BUFFER] search_rsp_hit_way has been asserted");
-                `endif
-                search_rsp_hit_way = 1'b1;
-                // We always return the oldest one if there are multiple hits.
-                // In addition, we return the request that affects the way if
-                // there is no request that affects the same TAG
-                if (!search_rsp_hit_tag & (max_count_search_way <= counter_ff[k]))
-                begin
-                    max_count_search_way = counter_ff[k];
-                    search_rsp           = store_buffer_info_ff[k];
-                    search_oldest        = k;
-                end
-            end
-        end
-        
-        if (search_rsp_hit_way | search_rsp_hit_tag) 
-            store_buffer_valid[search_oldest] = 1'b0;
-    end //!search_valid
-
+            
+            if (search_rsp_hit_way[thread_id] | search_rsp_hit_tag[thread_id]) 
+                store_buffer_valid[search_oldest[thread_id]] = 1'b0;
+        end //!search_valid
+    end //for threads
 end // always_comb
 
 endmodule
