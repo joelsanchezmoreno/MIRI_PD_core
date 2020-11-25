@@ -43,8 +43,11 @@ function automatic is_m_type_instr;
         is_m_type_instr = 1'b0;
         if ( (opcode == `INSTR_LDB_OPCODE)
             |(opcode == `INSTR_LDW_OPCODE)
+            |(opcode == `INSTR_LR_OPCODE)
             |(opcode == `INSTR_STB_OPCODE)
-            |(opcode == `INSTR_STW_OPCODE))
+            |(opcode == `INSTR_STW_OPCODE)
+            |(opcode == `INSTR_STCW_OPCODE)
+            |(opcode == `INSTR_STCB_OPCODE))
                 is_m_type_instr = 1'b1;
     end
 endfunction
@@ -68,7 +71,8 @@ function automatic is_load_instr;
     begin
         is_load_instr = 1'b0;
         if ( (opcode == `INSTR_LDB_OPCODE)
-            |(opcode == `INSTR_LDW_OPCODE))
+            |(opcode == `INSTR_LDW_OPCODE)
+            |(opcode == `INSTR_LR_OPCODE))
                 is_load_instr = 1'b1;
     end
 endfunction
@@ -79,9 +83,20 @@ function automatic is_store_instr;
         is_store_instr = 1'b0;
         if ( (opcode == `INSTR_STB_OPCODE)
             |(opcode == `INSTR_STW_OPCODE)
-            |(opcode == `INSTR_ASTB_OPCODE)
-            |(opcode == `INSTR_ASTW_OPCODE))
+            |(opcode == `INSTR_STCB_OPCODE)
+            |(opcode == `INSTR_STCW_OPCODE))
                 is_store_instr = 1'b1;
+    end
+endfunction
+
+function automatic is_mem_conditional_instr;
+    input logic [`INSTR_OPCODE_RANGE] opcode;
+    begin
+        is_mem_conditional_instr = 1'b0;
+        if ( (opcode == `INSTR_LR_OPCODE)
+            |(opcode == `INSTR_STCB_OPCODE)
+            |(opcode == `INSTR_STCW_OPCODE))
+                is_mem_conditional_instr = 1'b1;
     end
 endfunction
 
@@ -239,6 +254,7 @@ typedef struct packed
     logic [`DCACHE_WAYS_PER_SET_RANGE]  way; 
     req_size_t                          size;
     logic [`DCACHE_MAX_ACC_SIZE-1:0]    data;
+    logic [`THR_PER_CORE_WIDTH-1:0]     thread_id;
 } store_buffer_t;
 
 typedef struct packed 
@@ -324,6 +340,7 @@ typedef struct packed
     logic [`VIRT_ADDR_RANGE]         addr;
     req_size_t                       size;
     logic                            is_store; // asserted when request is a store
+    logic                            conditional;
     logic [`DCACHE_MAX_ACC_SIZE-1:0] data;
     fetch_xcpt_t                     xcpt_fetch;
     decode_xcpt_t                    xcpt_decode;

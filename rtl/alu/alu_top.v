@@ -541,12 +541,20 @@ begin
         
         // Specify LD or ST for dcache request
         if (is_load_instr(opcode))
-            req_dcache_info_next.is_store = 1'b0;
+        begin
+            req_dcache_info_next.is_store    = 1'b0;
+            req_dcache_info_next.conditional = is_mem_conditional_instr(opcode);
+        end
         else
-            req_dcache_info_next.is_store = 1'b1;
+        begin
+            req_dcache_info_next.is_store    = 1'b1;
+            req_dcache_info_next.conditional = is_mem_conditional_instr(opcode);
+        end
 
         // Specify size for dcache request
-        if (opcode == `INSTR_LDB_OPCODE | opcode == `INSTR_STB_OPCODE)
+        if (  opcode == `INSTR_LDB_OPCODE 
+            | opcode == `INSTR_STB_OPCODE 
+            | opcode == `INSTR_STCB_OPCODE)
             req_dcache_info_next.size = Byte;
         else
             req_dcache_info_next.size = Word;

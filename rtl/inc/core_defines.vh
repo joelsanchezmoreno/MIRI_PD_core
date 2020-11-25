@@ -31,13 +31,14 @@
 `define REG_FILE_NUM_REGS   32
 `define REG_FILE_NUM_REGS_RANGE  `REG_FILE_NUM_REGS-1:0
 //`define REG_FILE_ADDR_WIDTH $clog2(`REG_FILE_NUM_REGS)
-`define REG_FILE_ADDR_WIDTH $clog2(`REG_FILE_NUM_REGS) + 1 // Adding one bit for special registers such as MT_MODE
+`define REG_FILE_ADDR_WIDTH $clog2(`REG_FILE_NUM_REGS) + 1 // Adding one bit for special registers (mt_mode and conditional_error)
 `define REG_FILE_ADDR_RANGE `REG_FILE_ADDR_WIDTH-1:0
 
 `define REG_FILE_XCPT_ADDR_WIDTH `PC_WIDTH
 `define REG_FILE_XCPT_ADDR_RANGE `REG_FILE_XCPT_ADDR_WIDTH-1:0
 
-`define `MT_MODE_REG_ADDR 6'h3f
+`define COND_ERR_REG_ADDR 6'h20
+`define MT_MODE_REG_ADDR  6'h3e
 
 ///////////////////////
 // Virtual Memory defines
@@ -138,8 +139,9 @@
 `define INSTR_STB_OPCODE        `INSTR_OPCODE_WIDTH'h12
 `define INSTR_STW_OPCODE        `INSTR_OPCODE_WIDTH'h13
 `define INSTR_MOV_OPCODE        `INSTR_OPCODE_WIDTH'h14
-`define INSTR_ASTB_OPCODE       `INSTR_OPCODE_WIDTH'h15
-`define INSTR_ASTW_OPCODE       `INSTR_OPCODE_WIDTH'h16
+`define INSTR_STCB_OPCODE       `INSTR_OPCODE_WIDTH'h15
+`define INSTR_STCW_OPCODE       `INSTR_OPCODE_WIDTH'h16
+`define INSTR_LR_OPCODE         `INSTR_OPCODE_WIDTH'h17
 
 `define INSTR_BEQ_OPCODE        `INSTR_OPCODE_WIDTH'h30
 `define INSTR_BNE_OPCODE        `INSTR_OPCODE_WIDTH'h34

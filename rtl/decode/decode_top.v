@@ -579,7 +579,7 @@ multithreading_mode_t   mt_mode_next;
 logic                   req_mt_mode;
 
 assign req_mt_mode  = (writeEnRF && (destRF == `MT_MODE_REG_ADDR)) ? 1'b1 : 1'b0;
-assign mt_mode_next = (writeEnRF && (destRF == `MT_MODE_REG_ADDR)) ? writeValRF : mt_mode;
+assign mt_mode_next = (req_mt_mode) ? writeValRF : mt_mode;
 
     //     CLK    RST    EN           DOUT     DIN           DEF
 `RST_EN_FF(clock, reset, req_mt_mode, mt_mode, mt_mode_next, '0) // Single-threaded by default
