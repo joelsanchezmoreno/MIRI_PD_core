@@ -149,7 +149,7 @@ logic                               wb_new_tlb_id; // 0 for iTLB; 1 for dTLB
 tlb_req_info_t                      wb_new_tlb_info;
 
 //RoB
-logic reorder_buffer_full;
+logic [`THR_PER_CORE-1:0]        reorder_buffer_full;
 logic [`ROB_NUM_ENTRIES_W_RANGE] rob_tail;
 
 /////////////////////////////////////////
@@ -180,13 +180,13 @@ fetch_top
 
     // Branches
     .take_branch        (  alu_take_branch
-                         | wb_xcpt_valid        ), 
+                         | wb_xcpt_valid        ),//TODO: Target specific thread 
     .branch_pc          ( branch_pc             ), 
 
     // Stop fetching instructions
     .stall_fetch        (  alu_stall_pipeline  
                          | mul_stall_pipeline
-                         | reorder_buffer_full  ),
+                         | reorder_buffer_full  ),//TODO: Target specific thread
 
     // Fetched instruction
     .decode_instr_data  ( fetch_instr_data      ),
@@ -230,12 +230,12 @@ decode_top
     // Stall pipeline
     .stall_decode       (  alu_stall_pipeline
                          | mul_stall_pipeline
-                         | reorder_buffer_full  ),
+                         | reorder_buffer_full  ),//TODO: Target specific thread
 
     .flush_decode       (  alu_take_branch 
-                         | wb_xcpt_valid        ),
+                         | wb_xcpt_valid        ),//TODO: Target specific thread
 
-    .flush_rob          ( wb_xcpt_valid         ),
+    .flush_rob          ( wb_xcpt_valid         ),//TODO: Target specific thread
 
     // Exceptions from fetch
     .xcpt_fetch_in      ( xcpt_fetch_to_decode  ), 
@@ -268,7 +268,7 @@ decode_top
     .write_idRF         ( wb_write_id           ),
 
     // Exceptions values to be stored on the RF
-    .xcpt_valid         ( wb_xcpt_valid         ),
+    .xcpt_valid         ( wb_xcpt_valid         ),//TODO: Target specific thread
     .rmPC               ( wb_rmPC               ),
     .rmAddr             ( wb_rmAddr             ),
     .xcpt_type          ( wb_xcpt_type          )
@@ -289,8 +289,8 @@ mul_top
     .reset              ( reset ),
 
     // Stall pipeline
-    .flush_mul          ( wb_xcpt_valid         ),
-    .stall_decode       ( mul_stall_pipeline    ),
+    .flush_mul          ( wb_xcpt_valid         ),//TODO: Target specific thread
+    .stall_decode       ( mul_stall_pipeline    ),//TODO: Target specific thread
     
     // Request from decode stage
         // Operation
@@ -336,9 +336,9 @@ alu_top
     .cache_stage_free   ( alu_cache_stage_free      ),
 
     // Stall pipeline
-    .dcache_ready       ( dcache_ready              ),
-    .flush_alu          ( wb_xcpt_valid             ),
-    .stall_decode       ( alu_stall_pipeline        ),
+    .dcache_ready       ( dcache_ready              ),//TODO: Target specific thread
+    .flush_alu          ( wb_xcpt_valid             ),//TODO: Target specific thread
+    .stall_decode       ( alu_stall_pipeline        ),//TODO: Target specific thread
 
     // Exceptions
     .xcpt_fetch_in      ( xcpt_fetch_to_alu         ),
@@ -401,8 +401,8 @@ cache_top
     .priv_mode      ( priv_mode             ),
 
     // Control signals
-    .dcache_ready   ( dcache_ready          ), 
-    .flush_cache    ( wb_xcpt_valid         ),
+    .dcache_ready   ( dcache_ready          ), //TODO: Target specific thread
+    .flush_cache    ( wb_xcpt_valid         ),//TODO: Target specific thread
 
     // Request from the ALU stage
     .req_valid      ( req_to_dcache_valid   ), 
@@ -473,7 +473,7 @@ wb_top
     .req_to_RF_instr_id     ( wb_write_id               ),
 
     // Exceptions values to be stored on the RF
-    .xcpt_valid             ( wb_xcpt_valid             ),
+    .xcpt_valid             ( wb_xcpt_valid             ), //TODO: Target specific thread
     .xcpt_type              ( wb_xcpt_type              ),
     .xcpt_pc                ( wb_rmPC                   ),
     .xcpt_addr              ( wb_rmAddr                 ),

@@ -12,39 +12,24 @@ begin
 end
 
 //////////////////////////////////////////////////
-//// Generate clock and reset signals
-
-//timeunit 1ns;
-//timeprecision 100ps;
-//logic clock;
-//logic reset;
-//
-//initial 
-//begin 
-//    clock = 1'b0;
-//    reset = 1'b1;
-//    #10 reset = 1'b0;
-//end
-//
-//always #5 clock = ~clock;
-
-
-//////////////////////////////////////////////////
 // Interface signals with main memory
 
 // Request from D$ to the memory hierarchy
 logic                                   dcache_req_valid_miss;
 memory_request_t                        dcache_req_info_miss;
+logic [`THR_PER_CORE_WIDTH-1:0]         dcache_req_thread_id;
 
 // Request from I$ to the memory hierarchy
 logic                                   icache_req_valid_miss;
 memory_request_t                        icache_req_info_miss;
+logic [`THR_PER_CORE_WIDTH-1:0]         icache_req_thread_id;
 
 // Response from the memory hierarchy
 logic [`DCACHE_LINE_WIDTH-1:0]          rsp_data_miss;
 logic                                   rsp_valid_miss;
 logic                                   rsp_cache_id;
 logic                                   rsp_bus_error;
+logic [`THR_PER_CORE_WIDTH-1:0]         rsp_thread_id;
 
 //////////////////////////////////////////////////
 // Core top instance
@@ -61,10 +46,12 @@ core_top
     // Request from I$ to the memory hierarchy
     .dcache_req_valid_miss  ( dcache_req_valid_miss ),
     .dcache_req_info_miss   ( dcache_req_info_miss  ),
+    .dcache_req_thread_id   ( dcache_req_thread_id  ),
 
     // Request from D$ to the memory hierarchy                                      
     .icache_req_valid_miss  ( icache_req_valid_miss ),
     .icache_req_info_miss   ( icache_req_info_miss  ),
+    .icache_req_thread_id   ( icache_req_thread_id  ),
                                       
     // Response from the memory hierarchy                                  
     .rsp_data_miss          ( rsp_data_miss         ),
@@ -99,30 +86,31 @@ logic [`ICACHE_LINE_WIDTH-1:0]  rsp_mm_data;
 // D$ has always priority except if we are performing an instruction cache
 // request
 
-// Logic to emulate main memory latency
-logic [`LATENCY_MM_REQ_RANGE] mem_req_count;
-logic [`LATENCY_MM_REQ_RANGE] mem_req_count_ff ;
-
-//      CLK    RST      DOUT              DIN           DEF
-`RST_FF(clk_i, reset_i, mem_req_count_ff, mem_req_count, '0)
-
 // Request from D$ to the memory hierarchy
-logic               dcache_req_valid_next,dcache_req_valid_ff;
-memory_request_t    dcache_req_info_ff;
+logic                           dcache_req_valid_next;
+logc                            dcache_req_valid_ff;
+logic [`THR_PER_CORE_WIDTH-1:0] dcache_thread_id_ff; // thread id required???
+memory_request_t                dcache_req_info_ff;  //TODO: Maybe storage has to bee an array for threads
+
 
 // Request from I$ to the memory hierarchy
-logic               icache_req_valid_next,icache_req_valid_ff;
-memory_request_t    icache_req_info_ff;
+logic                           icache_req_valid_next;
+logic                           icache_req_valid_ff;
+logic [`THR_PER_CORE_WIDTH-1:0] icache_thread_id_ff; // thread id required???
+memory_request_t                icache_req_info_ff; //TODO: Maybe storage has to bee an array for threads
 
 //      CLK    RST      DOUT                 DIN           DEF
 `RST_FF(clk_i, reset_i, dcache_req_valid_ff, dcache_req_valid_next, '0)
 `RST_FF(clk_i, reset_i, icache_req_valid_ff, icache_req_valid_next, '0)
 
-//         CLK    RST      EN                     DOUT                DIN                   DEF
-`RST_EN_FF(clk_i, reset_i, dcache_req_valid_miss, dcache_req_info_ff, dcache_req_info_miss, '0)
-`RST_EN_FF(clk_i, reset_i, icache_req_valid_miss, icache_req_info_ff, icache_req_info_miss, '0)
+//         CLK    RST      EN                     DOUT                 DIN                   DEF
+`RST_EN_FF(clk_i, reset_i, dcache_req_valid_miss, dcache_req_info_ff,  dcache_req_info_miss, '0)
+`RST_EN_FF(clk_i, reset_i, dcache_req_valid_miss, dcache_thread_id_ff, dcache_thread_id,     '0)
+`RST_EN_FF(clk_i, reset_i, icache_req_valid_miss, icache_req_info_ff,  icache_req_info_miss, '0)
+`RST_EN_FF(clk_i, reset_i, icache_req_valid_miss, icache_thread_id_ff, icache_thread_id,     '0)
 
-logic   wait_rsp_icache_next,wait_rsp_icache_ff ;
+logic   wait_rsp_icache_next;
+lgoci   wait_rsp_icache_ff ;
 logic   wait_rsp_enable;
 logic   wait_icache_rsp_update;
 
@@ -136,11 +124,10 @@ begin
     rsp_valid_miss  = 1'b0;
     rsp_bus_error   = rsp_mm_bus_error;
 
-    // Hold values for next cycle
+        // Hold values for next cycles
     dcache_req_valid_next = dcache_req_valid_ff;
     icache_req_valid_next = icache_req_valid_ff;
     req_mm_info           = req_mm_info_ff;
-    mem_req_count         = mem_req_count_ff;
 
     // We store that we have a pending request from D$
     if (dcache_req_valid_miss)
@@ -158,29 +145,21 @@ begin
     // response for the I$ we perform the D$ request
     if (dcache_req_valid_ff & !wait_rsp_icache_ff)
     begin
-        if (mem_req_count_ff < `LATENCY_MM_REQ-1) 
-            mem_req_count = mem_req_count_ff + 1'b1;
-        else
+        req_mm_valid = !rsp_mm_valid;
+        req_mm_info  = dcache_req_info_ff;
+
+        if(rsp_mm_valid)
         begin
-            req_mm_valid = !rsp_mm_valid;
-            req_mm_info  = dcache_req_info_ff;
+            // De-assert request to the MM
+            req_mm_valid    = 1'b0;
 
-            if (rsp_mm_valid)
-            begin
-                // De-assert request to the MM
-                req_mm_valid    = 1'b0;
+            // Response to the core
+            rsp_valid_miss  = 1'b1;
+            rsp_cache_id    = 1'b1; // response to D$
+            rsp_data_miss   = rsp_mm_data; 
 
-                // Response to the core
-                rsp_valid_miss  = 1'b1;
-                rsp_cache_id    = 1'b1; // response to D$
-                rsp_data_miss   = rsp_mm_data; 
-
-                // Reset counter
-                mem_req_count   = '0;
-
-                // Reset control signal
-                dcache_req_valid_next   = dcache_req_valid_miss;
-            end
+            // Reset control signal
+            dcache_req_valid_next   = dcache_req_valid_miss;
         end
     end
 
@@ -189,31 +168,23 @@ begin
     if ((!dcache_req_valid_ff & icache_req_valid_ff) | wait_rsp_icache_ff)
     begin
         wait_rsp_icache_next = 1'b1;
+        req_mm_valid = !rsp_mm_valid;
+        req_mm_info  = icache_req_info_ff;    
 
-        if (mem_req_count_ff < `LATENCY_MM_REQ-1) 
-            mem_req_count = mem_req_count_ff + 1'b1;
-        else
+        if(rsp_mm_valid)
         begin
-            req_mm_valid = !rsp_mm_valid;
-            req_mm_info  = icache_req_info_ff;    
-            if (rsp_mm_valid)
-            begin     
-                // De-assert request to the MM
-                req_mm_valid    = 1'b0;
+            // De-assert request to the MM
+            req_mm_valid    = 1'b0;
 
-                // Response to the core                
-                rsp_valid_miss  = 1'b1;
-                rsp_cache_id    = 1'b0; // response to I$
-                rsp_data_miss   = rsp_mm_data;
-                
-                // Reset counter
-                mem_req_count   = '0;
-
-                // Reset control signal
-                wait_rsp_icache_next    = 1'b0;
-                wait_icache_rsp_update  = 1'b1; 
-                icache_req_valid_next   = icache_req_valid_miss;
-            end
+            // Response to the core                
+            rsp_valid_miss  = 1'b1;
+            rsp_cache_id    = 1'b0; // response to I$
+            rsp_data_miss   = rsp_mm_data;
+            
+            // Reset control signal
+            wait_rsp_icache_next    = 1'b0;
+            wait_icache_rsp_update  = 1'b1; 
+            icache_req_valid_next   = icache_req_valid_miss;
         end
     end
 end
@@ -310,8 +281,7 @@ begin
     // response for the I$ we perform the D$ request
     if (dcache_req_valid_ff & !wait_rsp_icache_ff)
     begin
-        if ( mem_req_count_ff >= `LATENCY_MM_REQ-1 &
-             rsp_mm_valid)
+        if (rsp_mm_valid)
         begin
             `ifdef VERBOSE_CORETB_MM
             $display("[CORE TB] Response arbiter. Data to D$ %h",rsp_mm_data);     
@@ -323,7 +293,7 @@ begin
     // already performing the I$ request we (continue) perform the I$ request
     if ((!dcache_req_valid_ff & icache_req_valid_ff) | wait_rsp_icache_ff)
     begin
-        if ( mem_req_count_ff >= `LATENCY_MM_REQ-1 & rsp_mm_valid)
+        if (rsp_mm_valid)
         begin     
             `ifdef VERBOSE_CORETB_MM
             $display("[CORE TB] Response arbiter. Data to I$ %h",rsp_mm_data);  
