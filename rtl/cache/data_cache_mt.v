@@ -60,7 +60,7 @@ arb_prio_mm
 (
     .client_valid   ( req_valid_miss_arb    ),
     .top_client     ( active_thread_id      ),  // give priority to active thread
-    .client_ready   ( '1                    ),  // threads always ready to send req
+    .client_ready   (                       ),  // threads always ready to send req
     .winner         ( arb_winner            ),
     
     .valid          ( req_valid_miss        ),
