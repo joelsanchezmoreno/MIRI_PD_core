@@ -63,7 +63,7 @@ module wb_top
     output  logic [`REG_FILE_DATA_RANGE]        alu_src2_data
 );
 
-logic invalidate_buffer;
+logic [`THR_PER_CORE-1:0]  invalidate_buffer;
 
 //      CLK    RST    DOUT               DIN         DEF
 `RST_FF(clock, reset, invalidate_buffer, xcpt_valid , '0)
