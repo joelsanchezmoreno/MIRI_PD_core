@@ -28,7 +28,6 @@ module data_cache
     // Request to the memory hierarchy
     output  logic                               req_valid_miss,
     output  memory_request_t                    req_info_miss,
-    output  logic [`THR_PER_CORE_WIDTH-1:0]     req_thread_id_miss,
 
     // Response from the memory hierarchy
     input   logic [`DCACHE_LINE_WIDTH-1:0]      rsp_data_miss,
@@ -475,9 +474,10 @@ begin
                                         // Send request to evict the line
                                         req_info_miss_arb[thread_id].addr     = ( {dCache_tag[req_target_pos[thread_id]],req_set[thread_id], 
                                                                                   {`DCACHE_OFFSET_WIDTH{1'b0}}} >> `DCACHE_ADDR_RSH_VAL);
-                                        req_info_miss_arb[thread_id].is_store = 1'b1;
-                                        req_info_miss_arb[thread_id].data     = dCache_data_ff[req_target_pos[thread_id]];
-                                        req_valid_miss_arb[thread_id]         = 1'b1;
+                                        req_info_miss_arb[thread_id].is_store  = 1'b1;
+                                        req_info_miss_arb[thread_id].data      = dCache_data_ff[req_target_pos[thread_id]];
+                                        req_info_miss_arb[thread_id].thread_id = thread_id;
+                                        req_valid_miss_arb[thread_id]          = 1'b1;
                                         
                                         // Invalidate the line
                                         dCache_valid[req_target_pos[thread_id]] = 1'b0;
@@ -504,6 +504,7 @@ begin
 
                                         req_info_miss_arb[thread_id].addr      = req_info.addr >> `DCACHE_ADDR_RSH_VAL;
                                         req_info_miss_arb[thread_id].is_store  = 1'b0;                            
+                                        req_info_miss_arb[thread_id].thread_id = thread_id;
                                         req_valid_miss_arb[thread_id]          = 1'b1;
 
                                         // Save pendent request addr (for future miss)
@@ -564,6 +565,7 @@ begin
                     // Send new request to bring the new line
                     req_info_miss_arb[thread_id].addr      = pending_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL;
                     req_info_miss_arb[thread_id].is_store  = 1'b0;
+                    req_info_miss_arb[thread_id].thread_id = thread_id;
                     req_valid_miss_arb[thread_id]          = 1'b1;
 
                     // Next stage:
@@ -756,10 +758,11 @@ begin
                         else
                         begin
                             // Send request to evict the line
-                            req_info_miss_arb[thread_id].addr     = pending_store_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL; //Evict full line
-                            req_info_miss_arb[thread_id].is_store = 1'b1;
-                            req_info_miss_arb[thread_id].data     = dCache_data[req_target_pos_ff[thread_id]];
-                            req_valid_miss_arb[thread_id]         = 1'b1;
+                            req_info_miss_arb[thread_id].addr       = pending_store_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL; //Evict full line
+                            req_info_miss_arb[thread_id].is_store   = 1'b1;
+                            req_info_miss_arb[thread_id].data       = dCache_data[req_target_pos_ff[thread_id]];
+                            req_info_miss_arb[thread_id].thread_id  = thread_id;
+                            req_valid_miss_arb[thread_id]           = 1'b1;
                             
                             // Invalidate the line
                             dCache_valid[req_target_pos_ff[thread_id]] = 1'b0;
@@ -787,14 +790,16 @@ begin
                 req_valid_miss_arb[thread_id]         = 1'b1;
                 if (dcache_state_aux_ff[thread_id] == evict_line)
                 begin                
-                    req_info_miss_arb[thread_id].addr     = pending_store_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL; //Evict full line
-                    req_info_miss_arb[thread_id].is_store = 1'b1;
-                    req_info_miss_arb[thread_id].data     = dCache_data[req_target_pos_ff[thread_id]];
+                    req_info_miss_arb[thread_id].addr       = pending_store_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL; //Evict full line
+                    req_info_miss_arb[thread_id].is_store   = 1'b1;
+                    req_info_miss_arb[thread_id].data       = dCache_data[req_target_pos_ff[thread_id]];
+                    req_info_miss_arb[thread_id].thread_id  = thread_id;
                 end
                 else //wanted to bring line
                 begin                    
-                    req_info_miss_arb[thread_id].addr     = pending_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL;
-                    req_info_miss_arb[thread_id].is_store  = 1'b0;
+                    req_info_miss_arb[thread_id].addr       = pending_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL;
+                    req_info_miss_arb[thread_id].is_store   = 1'b0;
+                    req_info_miss_arb[thread_id].thread_id  = thread_id;
                 end
                             
                 if (winner == thread_id)

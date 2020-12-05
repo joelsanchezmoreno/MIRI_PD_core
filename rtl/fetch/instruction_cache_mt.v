@@ -25,7 +25,6 @@ module instruction_cache
     // Request to the memory hierarchy
     output logic                            req_valid_miss,
     output memory_request_t                 req_info_miss,
-    output logic [`THR_PER_CORE_WIDTH-1:0]  req_thread_id_miss,
 
     // Response from the memory hierarchy
     input  logic [`ICACHE_LINE_WIDTH-1:0]   rsp_data_miss,
@@ -105,10 +104,10 @@ begin
     req_addr_pos    = '0; 
   
     // Do not send request to MM until we ensure we miss on the icache
-    req_valid_miss      = 1'b0;
-    req_info_miss.data  = '0;
-    req_thread_id_miss  = req_thread_id;
-    icache_hit          = 1'b0;
+    req_valid_miss          = 1'b0;
+    req_info_miss.data      = '0;
+    req_info_miss.thread_id = req_thread_id;
+    icache_hit              = 1'b0;
 
     // Do not respond to the fetch top until we ensure we have the correct
     // data
@@ -149,7 +148,7 @@ begin
             pendent_req[req_thread_id]          = 1'b1;
             req_info_miss.addr                  = req_addr >> `ICACHE_RSH_VAL;
             req_info_miss.is_store              = 1'b0;
-            req_thread_id_miss                  = req_thread_id;
+            req_info_miss.thread_id             = req_thread_id;
             req_valid_miss                      = !reset;
             icache_ready_next[req_thread_id]    = 1'b0;
         end

@@ -246,6 +246,7 @@ typedef struct packed
     logic [`PHY_ADDR_RANGE]             addr;
     logic                               is_store; // asserted when request is a store
     logic [`MAIN_MEMORY_LINE_WIDTH-1:0] data;
+    logic [`THR_PER_CORE_WIDTH-1:0]     thread_id;
 } memory_request_t;
 
 typedef struct packed 

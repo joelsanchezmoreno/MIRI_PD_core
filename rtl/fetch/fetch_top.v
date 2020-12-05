@@ -30,7 +30,6 @@ module fetch_top
     // Request to the memory hierarchy
     output  logic                               req_valid_miss,
     output  memory_request_t                    req_info_miss,
-    output  logic [`THR_PER_CORE_WIDTH-1:0]     req_thread_id_miss,
 
     // Response from the memory hierarchy
     input   logic                               rsp_valid_miss,
@@ -261,7 +260,6 @@ icache(
     // Request to the memory hierarchy
     .req_info_miss      ( req_info_miss         ),
     .req_valid_miss     ( req_valid_miss        ),
-    .req_thread_id_miss ( req_thread_id_miss    ),
                     
     // Response from the memory hierarchy
     .rsp_data_miss      ( rsp_data_miss         ),
