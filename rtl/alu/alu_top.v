@@ -8,7 +8,7 @@ module alu_top
     // Control signals with RoB
     output  logic [`THR_PER_CORE_WIDTH-1:0]  rob_thread_id,
     input   logic [`ROB_NUM_ENTRIES_W_RANGE] rob_tail,
-    output  logic                            cache_stage_free,
+    output  logic                            alu_no_req_to_cache,
 
     // Stall pipeline
     input   logic [`THR_PER_CORE-1:0]       flush_alu,
@@ -21,10 +21,10 @@ module alu_top
     
     // Request from decode stage
     input   logic                           req_alu_valid,  
+    input   logic [`THR_PER_CORE_WIDTH-1:0] req_alu_thread_id,
     input   alu_request_t                   req_alu_info,  
     input   logic [`ROB_ID_RANGE]           req_alu_instr_id,
     input   logic [`PC_WIDTH-1:0]           req_alu_pc,
-    input   logic [`THR_PER_CORE_WIDTH-1:0] req_alu_thread_id,
    
     // Request to dcache stage 
     output  logic                           req_dcache_valid,
@@ -33,16 +33,16 @@ module alu_top
     
     // Request to WB stage
     output  logic                           req_wb_valid,
+    output  logic [`THR_PER_CORE_WIDTH-1:0] req_wb_thread_id,
     output  writeback_request_t             req_wb_info,
     output  logic                           req_wb_mem_blocked,
     output  dcache_request_t                req_wb_dcache_info,
-    output  logic [`THR_PER_CORE_WIDTH-1:0] req_wb_thread_id,
 
     // Branch signals to fetch stage
     output  logic                           take_branch,
     output  logic [`THR_PER_CORE_WIDTH-1:0] branch_thr_id,
     output  logic [`PC_WIDTH-1:0]           branch_pc,
-    output  logic                           iret_instr,
+    output  logic [`THR_PER_CORE-1:0]       iret_instr,
 
     // Bypasses
         // Reorder buffer
@@ -129,7 +129,7 @@ assign decode_xcpt_valid =  req_alu_valid
 // stalled or had an xcpt going to WB. This means that we can send a queued
 // request on the RoB to the data cache 
 //
-assign cache_stage_free = req_wb_valid | !req_alu_valid;
+assign alu_no_req_to_cache = req_wb_valid | !req_alu_valid;
 
 logic               req_dcache_valid_next;
 logic               req_wb_mem_blocked_next;
@@ -286,13 +286,13 @@ end
 // Branch signals
 logic [`PC_WIDTH-1:0]   branch_pc_next;
 logic			 	    take_branch_next;
-logic                   iret_instr_next;
+logic [`THR_PER_CORE-1:0] iret_instr_next;
 
 assign branch_thr_id = previous_thread;
 
 //      CLK    RST    DOUT         DIN               DEF
 `RST_FF(clock, reset, take_branch, take_branch_next, 1'b0)
-`RST_FF(clock, reset, iret_instr,  iret_instr_next, 1'b0)
+`RST_FF(clock, reset, iret_instr,  iret_instr_next,  '0)
 
 //  CLK    DOUT       DIN
 `FF(clock, branch_pc, branch_pc_next)
@@ -458,7 +458,7 @@ begin
 
     // Branch
 	take_branch_next    = 1'b0;
-    iret_instr_next     = 1'b0;
+    iret_instr_next     = '0;
     branch_pc_next      = '0;
 
     // Dcache request
@@ -647,7 +647,7 @@ begin
         ra_data = (!stall_decode & req_alu_valid) ? req_alu_info.ra_data : req_alu_info_ff[thread_id].ra_data;
         branch_pc_next   = `ZX(`PC_WIDTH,ra_data);
 		take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
-        iret_instr_next  =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+        iret_instr_next[thread_id] = !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
     end
     req_dcache_info_next.xcpt_alu    = xcpt_alu;   
 end

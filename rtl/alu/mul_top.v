@@ -12,10 +12,10 @@ module mul_top
     // Request from decode stage
         // Operation
     input   logic                           req_mul_valid,  
+    input   logic [`THR_PER_CORE_WIDTH-1:0] req_mul_thread_id,
     input   mul_request_t                   req_mul_info,  
     input   logic [`ROB_ID_RANGE]           req_mul_instr_id,
     input   logic [`PC_WIDTH-1:0]           req_mul_pc,
-    input   logic [`THR_PER_CORE_WIDTH-1:0] req_mul_thread_id,
    
         // Exceptions
     input   fetch_xcpt_t                    xcpt_fetch_in,
@@ -24,7 +24,7 @@ module mul_top
     // Request to WB stage
     output  logic                           req_wb_valid,
     output  writeback_request_t             req_wb_info,
-    output  logic [`THR_PER_CORE_WIDTH-1:0] req_to_wb_thread_id,
+    output  logic [`THR_PER_CORE_WIDTH-1:0] req_wb_thread_id,
 
     // Bypasses
         // Reorder buffer
@@ -456,9 +456,9 @@ begin
     req_wb_info_next.xcpt_cache   = '0;
 end
 
-assign req_wb_valid         = (flush_mul[previous_thread]) ? 1'b0 : req_wb_valid_ff;
-assign req_wb_info          = req_wb_info_ff;
-assign req_to_wb_thread_id  = previous_thread;
+assign req_wb_valid      = (flush_mul[previous_thread]) ? 1'b0 : req_wb_valid_ff;
+assign req_wb_info       = req_wb_info_ff;
+assign req_wb_thread_id  = previous_thread;
 
 
 /////////////////////////////////

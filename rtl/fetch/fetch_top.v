@@ -13,10 +13,9 @@ module fetch_top
     // Exception
     output  fetch_xcpt_t                        xcpt_fetch,
 
-    // Branches 
-    input   logic                               take_branch,
-    input   logic   [`PC_WIDTH-1:0]             branch_pc,
-    input   logic   [`THR_PER_CORE_WIDTH-1:0]   branch_thr_id,
+    // Branches
+    input   logic   [`THR_PER_CORE-1:0]                 take_branch,
+    input   logic   [`THR_PER_CORE-1:0][`PC_WIDTH-1:0]  branch_pc,
 
     // Stall pipeline
     input   logic   [`THR_PER_CORE-1:0]         stall_fetch,
@@ -71,19 +70,18 @@ begin
     logic thread_is_active;
     assign thread_is_active = (active_thread == ll);
 
-        //     CLK    RST    EN                      DOUT                DIN          DEF
-    `RST_EN_FF(clock, reset, take_branch_update[ll], take_branch_ff[ll], take_branch, 1'b0)
+        //     CLK    RST    EN                      DOUT                DIN              DEF
+    `RST_EN_FF(clock, reset, take_branch_update[ll], take_branch_ff[ll], take_branch[ll], 1'b0)
     
         // CLK    EN                      DOUT              DIN
-    `EN_FF(clock, take_branch_update[ll], branch_pc_ff[ll], branch_pc)
+    `EN_FF(clock, take_branch_update[ll], branch_pc_ff[ll], branch_pc[ll])
     
-    assign branch_executed[ll]    = (  (take_branch        & (branch_thr_id == ll) & thread_is_active) // received branch same cycle that thread is active
+    assign branch_executed[ll]    = (  (take_branch[ll] & thread_is_active) // received branch same cycle that thread is active
                                      | (take_branch_ff[ll] & icache_ready[ll]      & thread_is_active)); // wanted to do a branch, icache is ready and thread is active
     
-    assign take_branch_update[ll] = (!take_branch_ff[ll] & 
-                                      (take_branch & branch_thr_id == ll))  ? 1'b1 : // branch request received
-                                    (branch_executed[ll])                   ? 1'b1 : // new PC has been requested and updated
-                                                                              1'b0 ;
+    assign take_branch_update[ll] = (!take_branch_ff[ll] & (take_branch[ll])) ? 1'b1 : // branch request received
+                                    (branch_executed[ll])                     ? 1'b1 : // new PC has been requested and updated
+                                                                                1'b0 ;
 end
 endgenerate
 
@@ -142,8 +140,8 @@ begin
                                                | stall_fetch[thr_id] 
                                                | !icache_ready[thr_id]) ? 1'b0 : 1'b1; 
     
-    assign program_counter_next[thr_id]     = (  thread_is_active & take_branch 
-                                               & (branch_thr_id == thr_id) 
+    assign program_counter_next[thr_id]     = (  thread_is_active 
+                                               & take_branch[thr_id] 
                                                & icache_ready[thr_id]           ) ? branch_pc[thr_id] : 
                                               (  thread_is_active
                                                & take_branch_ff[thr_id]  
@@ -209,7 +207,7 @@ logic   [`INSTR_WIDTH-1:0]          decode_instr_data_ff;
 logic   [`PC_WIDTH-1:0]             decode_instr_pc_ff;
 logic   [`THR_PER_CORE_WIDTH-1:0]   decode_thread_id_ff;
 
-assign decode_instr_valid_next = (  (take_branch & (branch_thr_id == active_thread)) 
+assign decode_instr_valid_next = (  (take_branch[active_thread]) 
                                   | take_branch_ff[active_thread]) ? 1'b0:
                                  (  xcpt_fetch.xcpt_itlb_miss
                                   | xcpt_fetch.xcpt_bus_error) ? 1'b1:
@@ -224,7 +222,6 @@ assign decode_instr_valid_next = (  (take_branch & (branch_thr_id == active_thre
 `FF(clock, decode_instr_pc_ff,    program_counter[active_thread])
 `FF(clock, decode_thread_id_ff,   active_thread)
 
-//assign decode_instr_valid = (take_branch & (branch_thr_id == active_thread)) ? 1'b0 : decode_instr_valid_ff;
 assign decode_instr_valid = decode_instr_valid_ff;
 assign decode_instr_data  = decode_instr_data_ff; 
 assign decode_instr_pc    = decode_instr_pc_ff;
