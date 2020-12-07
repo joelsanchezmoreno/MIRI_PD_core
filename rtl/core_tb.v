@@ -51,6 +51,7 @@ core_top
                                       
     // Response from the memory hierarchy                                  
     .rsp_data_miss          ( rsp_data_miss         ),
+    .rsp_thread_id          ( rsp_thread_id         ),
     .rsp_bus_error          ( rsp_bus_error         ),
     .rsp_valid_miss         ( rsp_valid_miss        ),
     .rsp_cache_id           ( rsp_cache_id          ) // 0 for I$, 1 for D$
@@ -69,9 +70,12 @@ memory_request_t    req_mm_info;
 memory_request_t    req_mm_info_ff;
 logic req_mm_info_is_dcache;
 logic req_mm_info_is_dcache_ff;
+logic order_fifo_pendant_request;
+logic order_fifo_pendant_request_ff;
 
-    //     CLK    RST    DOUT             DIN           DEF
-`RST_EN_FF(clk_i, rst_i, req_mm_valid_ff, req_mm_valid, 1'b0)
+    //  CLK    RST    DOUT                           DIN                        DEF
+`RST_FF(clk_i, rst_i, req_mm_valid_ff,               req_mm_valid,              1'b0)
+`RST_FF(clk_i, rst_i, order_fifo_pendant_request_ff, order_fifo_pendant_request,1'b0)
 
 //  CLK    DOUT                      DIN           
 `FF(clk_i, req_mm_info_ff,           req_mm_info)
@@ -89,6 +93,7 @@ logic [`ICACHE_LINE_WIDTH-1:0]  rsp_mm_data;
 // Each thread can have two requests in flight (Fetch and Cache)
 // Two requests can be received at the same cycle (Fetch and Cache)
 
+// Dcache FIFO
 logic               push_dcache_fifo;
 logic               pop_dcache_fifo;
 logic               dcache_fifo_not_empty;
@@ -113,9 +118,10 @@ main_memory_dcache_fifo
     // Pop data
     .pop        ( pop_dcache_fifo           ),
     .rdata      ( dcache_pop_info           ),
-    .valid      ( dcache_fifo_not_empty     ),
+    .valid      ( dcache_fifo_not_empty     )
 );
 
+// Icache FIFO
 logic               push_icache_fifo;
 logic               pop_icache_fifo;
 logic               icache_fifo_not_empty;
@@ -140,7 +146,35 @@ main_memory_icache_fifo
     // Pop data
     .pop        ( pop_icache_fifo           ),
     .rdata      ( icache_pop_info           ),
-    .valid      ( icache_fifo_not_empty     ),
+    .valid      ( icache_fifo_not_empty     )
+);
+
+// Dcache-Icache request order FIFO
+logic               pop_order_fifo;
+logic [1:0]         order_pop_info;
+logic               order_fifo_not_empty;
+fifo
+#(
+  .WIDTH ( 2                ),
+  .DEPTH ( `THR_PER_CORE*2  ) 
+)
+main_memory_order_fifo
+(
+    // System signals
+    .clock      ( clock                     ),
+    .reset      ( reset                     ),
+    .full       (                           ) 
+
+    // Push data
+    .push       (  push_icache_fifo 
+                 | push_dcache_fifo         ),
+    .wdata      ( {push_dcache_fifo,
+                   push_icache_fifo}        ), // D$ - b1 ; I$ - b0 
+ 
+    // Pop data
+    .pop        ( pop_order_fifo            ),
+    .rdata      ( order_pop_info            ),
+    .valid      ( order_fifo_not_empty      )
 );
 
 
@@ -151,15 +185,19 @@ begin
     rsp_bus_error   = rsp_mm_bus_error;
 
         // Push & Pop FIFOs
-    push_dcache_fifo   = dcache_req_valid_miss;
-    push_icache_fifo   = icache_req_valid_miss;
-    pop_dcache_fifo    = 1'b0;
-    pop_icache_fifo    = 1'b0;
+    push_dcache_fifo    = dcache_req_valid_miss;
+    push_icache_fifo    = icache_req_valid_miss;
+    pop_dcache_fifo     = 1'b0;
+    pop_icache_fifo     = 1'b0;
+    pop_order_fifo      = 1'b0;
 
         // Request to Main Memory
     req_mm_valid = req_mm_valid_ff;
     req_mm_info  = req_mm_info_ff;
-    req_mm_info_is_dcache   = req_mm_info_is_dcache_ff;
+
+        // Control signals
+    req_mm_info_is_dcache       = req_mm_info_is_dcache_ff;
+    order_fifo_pendant_request  = order_fifo_pendant_request_ff;
 
     // If there is a pendent request from D$ or I$ and Main Memory is ready.
     // Then, send the request to Main Memory
@@ -168,14 +206,29 @@ begin
     begin
         req_mm_valid = 1'b1;
 
-        //TODO: Think how to ensure the order of pop is correct between both FIFOs
-        //TODO: Add logic to choose between sending D$ or I$
-        pop_dcache_fifo = XXX;
-        pop_icache_fifo = XXX;
+            // Check if on the last order FIFO pop there were two requests to
+            // be handled, and there is one that has not been done yet
+        if (order_fifo_pendant_request_ff)
+        begin
+            // If there were two request, since we always prioritize the D$.
+            // The missing one is the icache one
+            pop_icache_fifo         = 1'b1;
+            req_mm_info             = icache_pop_info;
+            req_mm_info_is_dcache   = 1'b0;
+        end
+        else // No pendent requests
+        begin
+            pop_order_fifo  = 1'b1;
+                // In case of two request at the same cycle, we prioritize the
+                // data cache one and we mark that there is a pendent request
+            pop_dcache_fifo = order_pop_info[1];
+            pop_icache_fifo = !order_pop_info[1] & order_pop_info[0];
+            order_fifo_pendant_request = order_pop_info[1] & order_pop_info[0];
 
-        req_mm_info_is_dcache = pop_dcache_fifo;
-        req_mm_info  = (pop_dcache_fifo) ? dcache_pop_info : 
-                                           icache_pop_info;
+            req_mm_info_is_dcache = order_pop_info[1];
+            req_mm_info  = (pop_dcache_fifo) ? dcache_pop_info : 
+                                               icache_pop_info ;
+        end
     end
 
     if(rsp_mm_valid)
