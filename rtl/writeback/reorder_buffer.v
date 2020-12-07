@@ -5,11 +5,11 @@ module reorder_buffer
     // System signals
     input   logic                               clock,
     input   logic                               reset,
-    output  logic [`THR_PER_CORE-1:0]           reorder_buffer_full,
     input   logic [`THR_PER_CORE_WIDTH-1:0]     thread_id,
     output  logic [`THR_PER_CORE-1:0]           flush_pipeline,
     output  logic [`THR_PER_CORE-1:0]           flush_cache,
 
+    output  logic [`THR_PER_CORE-1:0]           reorder_buffer_full,
         // Control signals with ALU
     input   logic [`THR_PER_CORE_WIDTH-1:0]     rob_thread_id,
     output  logic [`ROB_NUM_ENTRIES_W_RANGE]    reorder_buffer_oldest,
@@ -37,15 +37,18 @@ module reorder_buffer
 
     // Request to Cache
     input   logic                               cache_stage_ready,
+    input   logic [`THR_PER_CORE-1:0]           cache_ready,
     input   logic [`THR_PER_CORE_WIDTH-1:0]     cache_active_thread,
     output  logic                               req_to_dcache_valid,
     output  dcache_request_t                    req_to_dcache_info,
+    output  logic [`THR_PER_CORE_WIDTH-1:0]     req_to_dcache_thread_id,
 
     // Request to RF
     output  logic                               req_to_RF_writeEn,
     output  logic [`REG_FILE_DATA_RANGE]        req_to_RF_data,
     output  logic [`REG_FILE_ADDR_RANGE]        req_to_RF_dest,
     output  logic [`ROB_ID_RANGE]               req_to_RF_instr_id,
+    output  logic [`THR_PER_CORE_WIDTH-1:0]     req_to_RF_thread_id,
 
     // Exceptions values to be stored on the RF
     output  logic 				                xcpt_valid,
@@ -58,6 +61,7 @@ module reorder_buffer
     output  logic                               new_tlb_entry,
     output  logic                               new_tlb_id,
     output  tlb_req_info_t                      new_tlb_info,
+    output  logic [`THR_PER_CORE_WIDTH-1:0]     new_tlb_thread_id,
 
     // Bypass info    
         // MUL
@@ -228,7 +232,8 @@ arbiter_priority
 #(.NUM_ENTRIES(`THR_PER_CORE))
 arb_prio_rob_to_cache
 (
-    .client_valid   ( threads_mem_blocked_valid ),
+    .client_valid   (  threads_mem_blocked_valid
+                     & cache_ready              ),
     .top_client     ( cache_active_thread       ),  // give priority to active thread on cache stage
     .client_ready   (                           ),  
     .winner         ( thread_mem_blocked        ),
@@ -274,12 +279,14 @@ begin
         req_to_RF_dest     = reorder_buffer_data_ff[oldest_thread][oldest_pos].rf_dest;
         req_to_RF_data     = reorder_buffer_data_ff[oldest_thread][oldest_pos].rf_data;
         req_to_RF_instr_id = reorder_buffer_data_ff[oldest_thread][oldest_pos].instr_id;
+        req_to_RF_thread_id= oldest_thread;
 
         // Request to TLB
         new_tlb_entry   =   reorder_buffer_data_ff[oldest_thread][oldest_pos].tlbwrite
                           & !reorder_buffer_data_ff[oldest_thread][oldest_pos].xcpt_info.valid;
         new_tlb_id      = reorder_buffer_data_ff[oldest_thread][oldest_pos].tlb_id;
         new_tlb_info    = reorder_buffer_data_ff[oldest_thread][oldest_pos].tlb_req_info; 
+        new_tlb_thread_id = oldest_thread;
 
         // Exceptions
         xcpt_valid      = reorder_buffer_data_ff[oldest_thread][oldest_pos].xcpt_info.valid    ;
@@ -307,6 +314,7 @@ begin
             req_to_RF_dest     = alu_req_info.rf_dest;
             req_to_RF_data     = alu_req_info.rf_data;
             req_to_RF_instr_id = alu_req_info.instr_id;
+            req_to_RF_thread_id= oldest_thread;
 
             // Request to TLB
             new_tlb_entry   =   alu_req_info.tlbwrite
@@ -329,6 +337,7 @@ begin
             req_to_RF_dest     = mul_req_info.rf_dest;
             req_to_RF_data     = mul_req_info.rf_data;
             req_to_RF_instr_id = mul_req_info.instr_id;
+            req_to_RF_thread_id= oldest_thread;
 
             // Request to TLB
             new_tlb_entry   =  1'b0;
@@ -348,6 +357,7 @@ begin
             req_to_RF_dest     = cache_req_info.rf_dest;
             req_to_RF_data     = cache_req_info.rf_data;
             req_to_RF_instr_id = cache_req_info.instr_id;
+            req_to_RF_thread_id= oldest_thread;
 
             // Request to TLB
             new_tlb_entry   =  1'b0;
@@ -369,11 +379,12 @@ begin
         &( (reorder_buffer_mem_instr_blocked_ff[thread_mem_blocked][oldest_pos_mem_blocked])
           |(reorder_buffer_mem_instr_blocked_ff[thread_mem_blocked][reorder_buffer_tail[thread_mem_blocked]]) )
        ) 
-    begin
+    begiin
         if ( reorder_buffer_mem_instr_blocked_ff[thread_mem_blocked][oldest_pos_mem_blocked])       
         begin
             reorder_buffer_mem_instr_blocked[thread_mem_blocked][oldest_pos_mem_blocked]  = 1'b0;
             req_to_dcache_valid            = 1'b1;
+            req_to_dcache_thread_id        = thread_mem_blocked;
             req_to_dcache_info.instr_id    = reorder_buffer_data_ff[thread_mem_blocked][oldest_pos_mem_blocked].instr_id;
             req_to_dcache_info.rd_addr     = reorder_buffer_data_ff[thread_mem_blocked][oldest_pos_mem_blocked].rd_addr;
             req_to_dcache_info.addr        = reorder_buffer_data_ff[thread_mem_blocked][oldest_pos_mem_blocked].virt_addr;
@@ -389,6 +400,7 @@ begin
         begin
             reorder_buffer_mem_instr_blocked[thread_mem_blocked][reorder_buffer_tail[thread_mem_blocked]] = 1'b0;
             req_to_dcache_valid            = 1'b1;
+            req_to_dcache_thread_id        = thread_mem_blocked;
             req_to_dcache_info.instr_id    = reorder_buffer_data_ff[thread_mem_blocked][reorder_buffer_tail[thread_mem_blocked]].instr_id;
             req_to_dcache_info.rd_addr     = reorder_buffer_data_ff[thread_mem_blocked][reorder_buffer_tail[thread_mem_blocked]].rd_addr;
             req_to_dcache_info.addr        = reorder_buffer_data_ff[thread_mem_blocked][reorder_buffer_tail[thread_mem_blocked]].virt_addr;
