@@ -5,7 +5,7 @@
 // cycles to go to memory and bring the line if evict is not needed.
 `include "soc.vh"
 
-module data_cache
+module data_cache_mt
 (
     input   logic                               clock,
     input   logic                               reset,
@@ -38,6 +38,7 @@ module data_cache
 ///////////////////////////////////
 // Main Memory Request management
 
+logic                                    req_valid_miss_active_thread;
 logic               [`THR_PER_CORE-1:0]  req_valid_miss_arb;
 memory_request_t    [`THR_PER_CORE-1:0]  req_info_miss_arb;
 memory_request_t    [`THR_PER_CORE-1:0]  req_info_miss_arb_ff;
@@ -45,13 +46,15 @@ memory_request_t    [`THR_PER_CORE-1:0]  req_info_miss_arb_ff;
 dcache_state_t [`THR_PER_CORE-1:0]  dcache_state_aux;
 dcache_state_t [`THR_PER_CORE-1:0]  dcache_state_aux_ff;
 
-//  CLK    RST    DOUT                  DIN
-`FF(clock, reset, req_info_miss_arb_ff, req_info_miss_arb)
+//  CLK    DOUT                  DIN
+`FF(clock, req_info_miss_arb_ff, req_info_miss_arb)
 
-    //  CLK    RST    DOUT                   DIN                 DEF
-`RST_FF(clock, reset, dcache_state_aux_ff,   dcache_state_aux,   '0)
+    //  CLK    RST    DOUT                   DIN               DEF
+`RST_FF(clock, reset, dcache_state_aux_ff,   dcache_state_aux, '0)
 
 logic [`THR_PER_CORE_WIDTH-1:0] arb_winner;
+logic [`THR_PER_CORE_WIDTH-1:0] arb_winner_ff;
+`FF(clock, arb_winner_ff, arb_winner)
 
 arbiter_priority
 #(.NUM_ENTRIES(`THR_PER_CORE))
@@ -62,11 +65,13 @@ arb_prio_mm
     .client_ready   (                       ),  // threads always ready to send req
     .winner         ( arb_winner            ),
     
-    .valid          ( req_valid_miss        ),
+    .valid          (                       ),
     .ready          ( 1'b1                  )
 );
 
-assign req_info_miss = req_info_miss_arb[arb_winner];
+assign req_valid_miss = req_valid_miss_active_thread | (|req_valid_miss_arb);
+assign req_info_miss  = (req_valid_miss_active_thread) ? req_info_miss_arb[active_thread_id] :
+                                                         req_info_miss_arb[arb_winner_ff];
 
 ///////////////////////////////////
 // Thread waits for a request from another thread
@@ -86,10 +91,10 @@ logic [`THR_PER_CORE-1:0]                           blocked_by_thread_valid_ff;
 
 ///////////////////////////////////
 // Reserved ways through conditional load/store
-logic [`DCACHE_NUM_WAYS_R][`THR_PER_CORE_WIDTH] dCache_reserved_way;
-logic [`DCACHE_NUM_WAYS_R][`THR_PER_CORE_WIDTH] dCache_reserved_way_ff;
-logic [`DCACHE_NUM_WAYS_R]                      dCache_reserved_valid;
-logic [`DCACHE_NUM_WAYS_R]                      dCache_reserved_valid_ff;
+logic [`DCACHE_NUM_WAYS_R][`THR_PER_CORE_WIDTH-1:0] dCache_reserved_way;
+logic [`DCACHE_NUM_WAYS_R][`THR_PER_CORE_WIDTH-1:0] dCache_reserved_way_ff;
+logic [`DCACHE_NUM_WAYS_R]                          dCache_reserved_valid;
+logic [`DCACHE_NUM_WAYS_R]                          dCache_reserved_valid_ff;
 
 //      CLK    RST    DOUT                      DIN                    DEF
 `RST_FF(clock, reset, dCache_reserved_valid_ff, dCache_reserved_valid, '0)
@@ -250,6 +255,7 @@ begin
         // Control signals to allocate new lines
     req_target_pos      = req_target_pos_ff;
     pending_req         = pending_req_ff;
+    req_valid_miss_active_thread = 1'b0;
 
         // Control signals for main memory request tracking
     blocked_by_thread_valid = blocked_by_thread_valid_ff;
@@ -257,11 +263,10 @@ begin
     blocked_by_thread_tag   = blocked_by_thread_tag_ff;
        
         // Control signals for conditional operations
-   dCache_reserved_valid    = dCache_reserved_valid_ff;
-   dCache_reserved_way      = dCache_reserved_way_ff;
+    dCache_reserved_valid    = dCache_reserved_valid_ff;
+    dCache_reserved_way      = dCache_reserved_way_ff;
    
         // Arbiter
-    req_valid_miss_arb  = '0;
     dcache_state_aux    = dcache_state_aux_ff;
     req_info_miss_arb   = req_info_miss_arb_ff;
 
@@ -271,7 +276,7 @@ begin
         // Exception
     xcpt_bus_error = 1'b0;
 
-
+        // Response to core
     rsp_valid       = 1'b0;
     rsp_error       = 1'b0;
     dcache_tags_hit = 1'b0;
@@ -282,6 +287,7 @@ begin
         case(dcache_state_ff[thread_id])
             idle:
             begin
+                req_valid_miss_arb[thread_id]  = 1'b0;
                 dcache_ready_next[thread_id] = !store_buffer_full;
               
                 // Compute the tag and set for the given address 
@@ -422,7 +428,7 @@ begin
                             end
                             else // If store
                             begin
-                                if(dCache_reserved_way_ff[req_target_pos[thread_id]] != thread_id))
+                                if(dCache_reserved_way_ff[req_target_pos[thread_id]] != thread_id)
                                 begin
                                     rsp_valid = 1'b1;
                                     rsp_error = 1'b1;
@@ -477,7 +483,7 @@ begin
                                         req_info_miss_arb[thread_id].is_store  = 1'b1;
                                         req_info_miss_arb[thread_id].data      = dCache_data_ff[req_target_pos[thread_id]];
                                         req_info_miss_arb[thread_id].thread_id = thread_id;
-                                        req_valid_miss_arb[thread_id]          = 1'b1;
+                                        req_valid_miss_active_thread           = 1'b1;
                                         
                                         // Invalidate the line
                                         dCache_valid[req_target_pos[thread_id]] = 1'b0;
@@ -505,7 +511,7 @@ begin
                                         req_info_miss_arb[thread_id].addr      = req_info.addr >> `DCACHE_ADDR_RSH_VAL;
                                         req_info_miss_arb[thread_id].is_store  = 1'b0;                            
                                         req_info_miss_arb[thread_id].thread_id = thread_id;
-                                        req_valid_miss_arb[thread_id]          = 1'b1;
+                                        req_valid_miss_active_thread           = 1'b1;
 
                                         // Save pendent request addr (for future miss)
                                         // on the MM array such that if a new thread
@@ -568,14 +574,8 @@ begin
                     req_info_miss_arb[thread_id].thread_id = thread_id;
                     req_valid_miss_arb[thread_id]          = 1'b1;
 
-                    // Next stage:
-                    //   - Go to bring_line if we were able to send request to main memory
-                    //   - Go to pendent_request if we are waiting to send req to memory
-                    if (winner == thread_id)
-                        dcache_state[thread_id]  = bring_line;
-                    else:
-                        dcache_state[thread_id]     = pendent_request;
-                        dcache_state_aux[thread_id] = bring_line;
+                    dcache_state[thread_id]     = pendent_request;
+                    dcache_state_aux[thread_id] = bring_line;
                 end
             end
 
@@ -768,14 +768,8 @@ begin
                             dCache_valid[req_target_pos_ff[thread_id]] = 1'b0;
                             dCache_dirty[req_target_pos_ff[thread_id]] = 1'b0;
 
-                            // Next stage:
-                                //   - Go to evict_line if we were able to send request to main memory
-                                //   - Go to pendent_request if we are waiting to send req to memory
-                            if (winner == thread_id)
-                                dcache_state[thread_id] = evict_line;
-                            else:
-                                dcache_state[thread_id]     = pendent_request;
-                                dcache_state_aux[thread_id] = evict_line;
+                            dcache_state[thread_id]     = pendent_request;
+                            dcache_state_aux[thread_id] = evict_line;
                         end
                     end                
                 end
@@ -787,7 +781,7 @@ begin
             // request and move to the next state
             pendent_request:
             begin
-                req_valid_miss_arb[thread_id]         = 1'b1;
+                req_valid_miss_arb[thread_id]  = 1'b1;
                 if (dcache_state_aux_ff[thread_id] == evict_line)
                 begin                
                     req_info_miss_arb[thread_id].addr       = pending_store_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL; //Evict full line
@@ -802,7 +796,7 @@ begin
                     req_info_miss_arb[thread_id].thread_id  = thread_id;
                 end
                             
-                if (winner == thread_id)
+                if (arb_winner_ff == thread_id)
                     dcache_state[thread_id] = dcache_state_aux_ff[thread_id];
                 else
                     dcache_state[thread_id] = pendent_request;
@@ -825,7 +819,7 @@ logic update_dcache_lru_mm;
 assign update_dcache_lru    = dcache_tags_hit;
 assign update_dcache_lru_mm = (dcache_state_ff[rsp_thread_id] == bring_line) & rsp_valid_miss;
 
-assign update_set    = req_set[thread_id] ;
+assign update_set    = req_set[active_thread_id] ;
 assign update_set_mm = req_set[rsp_thread_id] ;
 
 assign update_way    = hit_way;
@@ -846,7 +840,7 @@ dcache_lru
     .clock              ( clock             ),
     .reset              ( reset             ),
     .mt_mode            ( mt_mode           ),
-    .thread_id          ( thread_id         ),
+    .thread_id          ( active_thread_id  ),
 
     // Info to select the victim
     .victim_req         ( !dcache_tags_hit  ),

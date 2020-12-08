@@ -73,9 +73,9 @@ logic req_mm_info_is_dcache_ff;
 logic order_fifo_pendant_request;
 logic order_fifo_pendant_request_ff;
 
-    //  CLK    RST    DOUT                           DIN                        DEF
-`RST_FF(clk_i, rst_i, req_mm_valid_ff,               req_mm_valid,              1'b0)
-`RST_FF(clk_i, rst_i, order_fifo_pendant_request_ff, order_fifo_pendant_request,1'b0)
+    //  CLK    RST      DOUT                           DIN                        DEF
+`RST_FF(clk_i, reset_i, req_mm_valid_ff,               req_mm_valid,              1'b0)
+`RST_FF(clk_i, reset_i, order_fifo_pendant_request_ff, order_fifo_pendant_request,1'b0)
 
 //  CLK    DOUT                      DIN           
 `FF(clk_i, req_mm_info_ff,           req_mm_info)
@@ -107,9 +107,9 @@ fifo
 main_memory_dcache_fifo
 (
     // System signals
-    .clock      ( clock                     ),
-    .reset      ( reset                     ),
-    .full       (                           ) 
+    .clock      ( clk_i                     ),
+    .reset      ( reset_i                   ),
+    .full       (                           ),
 
     // Push data
     .push       ( push_dcache_fifo          ),
@@ -118,7 +118,7 @@ main_memory_dcache_fifo
     // Pop data
     .pop        ( pop_dcache_fifo           ),
     .rdata      ( dcache_pop_info           ),
-    .valid      ( dcache_fifo_not_empty     )
+    .not_empty  ( dcache_fifo_not_empty     )
 );
 
 // Icache FIFO
@@ -135,9 +135,9 @@ fifo
 main_memory_icache_fifo
 (
     // System signals
-    .clock      ( clock                     ),
-    .reset      ( reset                     ),
-    .full       (                           ) 
+    .clock      ( clk_i                     ),
+    .reset      ( reset_i                   ),
+    .full       (                           ),
 
     // Push data
     .push       ( push_icache_fifo          ),
@@ -146,13 +146,14 @@ main_memory_icache_fifo
     // Pop data
     .pop        ( pop_icache_fifo           ),
     .rdata      ( icache_pop_info           ),
-    .valid      ( icache_fifo_not_empty     )
+    .not_empty  ( icache_fifo_not_empty     )
 );
 
 // Dcache-Icache request order FIFO
 logic               pop_order_fifo;
 logic [1:0]         order_pop_info;
 logic               order_fifo_not_empty;
+
 fifo
 #(
   .WIDTH ( 2                ),
@@ -161,9 +162,9 @@ fifo
 main_memory_order_fifo
 (
     // System signals
-    .clock      ( clock                     ),
-    .reset      ( reset                     ),
-    .full       (                           ) 
+    .clock      ( clk_i                     ),
+    .reset      ( reset_i                   ),
+    .full       (                           ),
 
     // Push data
     .push       (  push_icache_fifo 
@@ -174,7 +175,7 @@ main_memory_order_fifo
     // Pop data
     .pop        ( pop_order_fifo            ),
     .rdata      ( order_pop_info            ),
-    .valid      ( order_fifo_not_empty      )
+    .not_empty  ( order_fifo_not_empty      )
 );
 
 
@@ -334,6 +335,7 @@ begin
     `endif
 end
 
+/*
 always_ff @(posedge clk_i) 
 begin
     // If there is a request from the D$ and we are not busy sending the
@@ -377,6 +379,7 @@ begin
         $finish;
     end
 end
+*/
 `endif
 
 endmodule

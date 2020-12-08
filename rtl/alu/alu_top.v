@@ -70,7 +70,7 @@ logic [`THR_PER_CORE_WIDTH-1:0] previous_thread;
 
 
 logic [`THR_PER_CORE-1:0]                       req_alu_valid_ff;
-mul_request_t [`THR_PER_CORE-1:0]               req_alu_info_ff;
+alu_request_t [`THR_PER_CORE-1:0]               req_alu_info_ff;
 logic [`THR_PER_CORE-1:0][`ROB_ID_RANGE]        req_alu_instr_id_ff;
 logic [`THR_PER_CORE-1:0][`PC_WIDTH-1:0]        req_alu_pc_ff;
 
@@ -129,7 +129,8 @@ assign decode_xcpt_valid =  req_alu_valid
 // stalled or had an xcpt going to WB. This means that we can send a queued
 // request on the RoB to the data cache 
 //
-assign alu_no_req_to_cache = req_wb_valid | !req_alu_valid;
+logic               req_wb_valid_next;
+assign alu_no_req_to_cache = req_wb_valid_next;
 
 logic               req_dcache_valid_next;
 logic               req_wb_mem_blocked_next;
@@ -171,11 +172,11 @@ assign dcache_mem_type =   is_m_type_instr(req_alu_info.opcode)
 
 
 assign req_dcache_valid_next = ( flush_alu[thread_id]       ) ? 1'b0 :     
-                               ( stall_decode[thread_id]    ) ? 1'b0 : 
-                               ( req_alu_valid              ) ? dcache_mem_type :
                                (  fetch_xcpt_valid        
                                 | decode_xcpt_valid 
-                                | xcpt_alu.xcpt_overflow   ) ? 1'b0 : // in case of xcpt go to wb 
+                                | xcpt_alu.xcpt_overflow    ) ? 1'b0 : // in case of xcpt go to wb 
+                               ( stall_decode[thread_id]    ) ? 1'b0 : 
+                               ( req_alu_valid              ) ? dcache_mem_type :
                                ( req_alu_valid_ff[thread_id]) ? dcache_mem_type_ff[thread_id] : 1'b0;
 
 assign req_dcache_valid = (flush_alu[previous_thread]) ? 1'b0 : req_dcache_valid_ff;
@@ -227,7 +228,6 @@ logic           tlb_req_valid_next;
 logic           tlb_id_next;
 tlb_req_info_t  tlb_req_info_next;
 
-logic               req_wb_valid_next;
 writeback_request_t req_wb_info_next;
 logic               req_wb_valid_ff;
 writeback_request_t req_wb_info_ff;
@@ -236,17 +236,17 @@ writeback_request_t req_wb_info_ff;
  // CLK    DOUT                DIN                  
 `FF(clock, req_wb_info_ff, req_wb_info_next)
 
-    //     CLK    RST    DOUT             DIN                DEF
-`RST_EN_FF(clock, reset, req_wb_valid_ff, req_wb_valid_next, '0)
+    //  CLK    RST    DOUT             DIN                DEF
+`RST_FF(clock, reset, req_wb_valid_ff, req_wb_valid_next, '0)
 
 assign req_wb_valid_next = ( flush_alu[thread_id]   ) ? 1'b0 :
-                           ( stall_decode[thread_id]) ? 1'b0 :
-                           ( req_alu_valid          ) ? alu_to_wb_intr :
                            (  fetch_xcpt_valid
                             | decode_xcpt_valid     
                             | xcpt_alu.xcpt_overflow) ? 1'b1 : 
-                                                        (  req_alu_valid_ff[thread_id])
-                                                         & alu_to_wb_intr_ff[thread_id];
+                           ( req_alu_valid          ) ? alu_to_wb_intr :
+                           ( stall_decode[thread_id]) ? 1'b0 :
+                                                        (  req_alu_valid_ff[thread_id]
+                                                         & alu_to_wb_intr_ff[thread_id]);
 
                                                     
 assign req_wb_valid     = (flush_alu[previous_thread]) ? 1'b0 : req_wb_valid_ff;
@@ -254,33 +254,6 @@ assign req_wb_info      = req_wb_info_ff;
 assign req_wb_thread_id = previous_thread;
 
 
-
-logic [`REG_FILE_DATA_RANGE] rf_data;
-logic [`INSTR_OPCODE_RANGE]  opcode;
-
-always_comb
-begin  
-    req_wb_info_next.instr_id    = (req_alu_valid) ? req_alu_instr_id : req_alu_instr_id_ff[thread_id];
-    req_wb_info_next.pc          = (req_alu_valid) ? req_alu_pc       : req_alu_pc_ff[thread_id];
-
-    req_wb_info_next.tlbwrite     = tlb_req_valid_next; 
-    req_wb_info_next.tlb_id       = tlb_id_next; 
-    req_wb_info_next.tlb_req_info = tlb_req_info_next;
-
-    opcode = (req_alu_valid) ? req_alu_info.opcode : req_alu_info_ff[thread_id].opcode;
-                                
-    req_wb_info_next.rf_wen       =  is_r_type_instr(opcode) | is_mov_instr(opcode);
-
-    req_wb_info_next.rf_dest      = (req_alu_valid) ? req_alu_info.rd_addr :
-                                                      req_alu_info_ff[thread_id].rd_addr;
-    req_wb_info_next.rf_data      = rf_data;
-                      
-    req_wb_info_next.xcpt_fetch   = (req_alu_valid) ? xcpt_fetch_in : '0;
-    req_wb_info_next.xcpt_decode  = (req_alu_valid) ? xcpt_decode_in: '0;
-    req_wb_info_next.xcpt_alu     = xcpt_alu;
-    req_wb_info_next.xcpt_mul     = '0;
-    req_wb_info_next.xcpt_cache   = '0;
-end
 
 ////////////////////////////////////
 // Branch signals
@@ -335,9 +308,9 @@ begin
     `RST_EN_FF(clock, reset | flush_alu[pp], update_ff, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
     `RST_EN_FF(clock, reset | flush_alu[pp], update_ff, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
     
-    //         CLK    RST                    EN         DOUT                 DIN
-    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff, rob_src1_id_ff[pp], rob_src1_id)
-    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff, rob_src2_id_ff[pp], rob_src2_id)
+    //     CLK    EN         DOUT                DIN
+    `EN_FF(clock, update_ff, rob_src1_id_ff[pp], rob_src1_id)
+    `EN_FF(clock, update_ff, rob_src2_id_ff[pp], rob_src2_id)
 
     //     CLK   EN                     DOUT                   DIN
     `EN_FF(clock, update_rob_data1[pp], rob_src1_data_ff[pp], (rob_src1_hit & update_ff) ? rob_src1_data: writeValRF)
@@ -376,7 +349,7 @@ begin
     begin
         // Check if there is a hit on this cycle and store the hit, only if we
         // did not hit last cycle
-        if (!rob_src1_found_ff)[thread_id]
+        if (!rob_src1_found_ff[thread_id])
             rob_src1_found_next[thread_id] = rob_src1_hit;
 
         if (!rob_src2_found_ff[thread_id])
@@ -452,9 +425,13 @@ end
 
 logic   [`ALU_OFFSET_RANGE]     offset;  // Offset value
 
+logic [`REG_FILE_DATA_RANGE] rf_data;
+logic [`INSTR_OPCODE_RANGE]  opcode;
 always_comb
 begin
     rf_data = '0;
+
+    opcode = (req_alu_valid) ? req_alu_info.opcode : req_alu_info_ff[thread_id].opcode;
 
     // Branch
 	take_branch_next    = 1'b0;
@@ -466,8 +443,8 @@ begin
     req_dcache_info_next.pc          = (req_alu_valid) ? req_alu_pc           : req_alu_pc_ff[thread_id];
     req_dcache_info_next.instr_id    = (req_alu_valid) ? req_alu_instr_id     : req_alu_instr_id_ff[thread_id];
     req_dcache_info_next.rd_addr     = (req_alu_valid) ? req_alu_info.rd_addr : req_alu_info_ff[thread_id].rd_addr;
-    req_dcache_info_next.xcpt_fetch  = (req_alu_valid) ? xcpt_fetch_in        : '0 ;
-    req_dcache_info_next.xcpt_decode = (req_alu_valid) ? xcpt_decode_in       : '0;
+    req_dcache_info_next.xcpt_fetch  = '0 ;
+    req_dcache_info_next.xcpt_decode = '0;
 
     // Exception
     xcpt_alu.xcpt_overflow = 1'b0 ;
@@ -649,7 +626,27 @@ begin
 		take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
         iret_instr_next[thread_id] = !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
     end
-    req_dcache_info_next.xcpt_alu    = xcpt_alu;   
+    req_dcache_info_next.xcpt_alu    = '0;
+
+    req_wb_info_next.instr_id    = (req_alu_valid) ? req_alu_instr_id : req_alu_instr_id_ff[thread_id];
+    req_wb_info_next.pc          = (req_alu_valid) ? req_alu_pc       : req_alu_pc_ff[thread_id];
+
+    req_wb_info_next.tlbwrite     = tlb_req_valid_next; 
+    req_wb_info_next.tlb_id       = tlb_id_next; 
+    req_wb_info_next.tlb_req_info = tlb_req_info_next;
+                                
+    req_wb_info_next.rf_wen       =  is_r_type_instr(opcode) | is_mov_instr(opcode);
+
+    req_wb_info_next.rf_dest      = (req_alu_valid) ? req_alu_info.rd_addr :
+                                                      req_alu_info_ff[thread_id].rd_addr;
+    req_wb_info_next.rf_data      = rf_data;
+                      
+    req_wb_info_next.xcpt_fetch   = (req_alu_valid) ? xcpt_fetch_in : '0;
+    req_wb_info_next.xcpt_decode  = (req_alu_valid) ? xcpt_decode_in: '0;
+    req_wb_info_next.xcpt_alu     = xcpt_alu;
+    req_wb_info_next.xcpt_mul     = '0;
+    req_wb_info_next.xcpt_cache   = '0;
+
 end
 
 /////////////////////////////////

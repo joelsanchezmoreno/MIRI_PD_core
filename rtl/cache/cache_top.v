@@ -100,9 +100,9 @@ logic                               req_wb_valid_ff;
 writeback_request_t                 req_wb_info_next;
 writeback_request_t                 req_wb_info_ff;
 
-//         CLK    RST    DOUT             DIN                DEF
-`RST_EN_FF(clock, reset, req_wb_valid_ff, req_wb_valid_next, '0)
-`RST_EN_FF(clock, reset, req_wb_info_ff,  req_wb_info_next,  '0)
+//      CLK    RST    DOUT             DIN                DEF
+`RST_FF(clock, reset, req_wb_valid_ff, req_wb_valid_next, '0)
+`RST_FF(clock, reset, req_wb_info_ff,  req_wb_info_next,  '0)
 
 assign req_wb_valid     = (flush_cache[previous_thread]) ? 1'b0 : req_wb_valid_ff;
 assign req_wb_info      = req_wb_info_ff;
@@ -181,13 +181,15 @@ end
                                       
 //////////////////////////////////////////////////
 // Data Cache instance
-data_cache
+data_cache_mt
 dcache
 (
     // System signals
     .clock              ( clock             ),
     .reset              ( reset             ),
     .dcache_ready       ( dcache_ready      ),
+    .mt_mode            ( mt_mode           ),
+    .active_thread_id   ( thread_id         ),
 
     // Exception
     .xcpt_bus_error     ( xcpt_bus_error    ),
@@ -195,7 +197,6 @@ dcache
     // Request from the core pipeline
     .req_valid          ( dcache_req_valid  ),
     .req_info           ( req_dcache_info   ),
-    .thread_id          ( thread_id         ),
 
     // Response to the core pipeline
     .rsp_valid          ( dcache_rsp_valid  ),
@@ -228,10 +229,10 @@ dtlb
     .mt_mode            ( mt_mode               ),
 
     // Request from the core pipeline
-    .req_valid          ( dtlb_req_valid            ),
-    .req_virt_addr      ( req_info_addr             ),
-    .req_thread_id      ( thread_id                 ),
-    .priv_mode          ( priv_mode[active_thread]  ),
+    .req_valid          ( dtlb_req_valid        ),
+    .req_virt_addr      ( req_info_addr         ),
+    .req_thread_id      ( thread_id             ),
+    .priv_mode          ( priv_mode[thread_id]  ),
 
     // Response to the cache
     .rsp_valid          ( dTlb_rsp_valid        ), 

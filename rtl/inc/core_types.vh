@@ -165,7 +165,7 @@ typedef enum logic [2:0] {
    idle             = 3'b000, 
    evict_line       = 3'b001, 
    bring_line       = 3'b010, 
-   write_cache_line = 3'b011
+   write_cache_line = 3'b011,
    pendent_request  = 3'b100
 } dcache_state_t;
 
@@ -291,6 +291,7 @@ typedef struct packed
     logic [`VIRT_ADDR_RANGE]         addr;
     req_size_t                       size;
     logic                            is_store; // asserted when request is a store
+    logic                            conditional;
     logic [`DCACHE_MAX_ACC_SIZE-1:0] data;
 } reorder_buffer_t;
 

@@ -52,15 +52,15 @@ logic [`THR_PER_CORE_WIDTH-1:0] previous_thread;
 `FF(clock, previous_thread, thread_id)
 
 /////////////////
-logic fetch_xcpt_valid;
-assign fetch_xcpt_valid = req_mul_valid &  
-                         ( xcpt_fetch_in.xcpt_itlb_miss
-                         | xcpt_fetch_in.xcpt_bus_error 
-                         | xcpt_fetch_in.xcpt_addr_val); 
+logic fetch_xcpt_valid_in;
+assign fetch_xcpt_valid_in = req_mul_valid &  
+                             ( xcpt_fetch_in.xcpt_itlb_miss
+                             | xcpt_fetch_in.xcpt_bus_error 
+                             | xcpt_fetch_in.xcpt_addr_val); 
 
-logic decode_xcpt_valid;
-assign decode_xcpt_valid =  req_mul_valid
-                          & xcpt_decode_in.xcpt_illegal_instr;
+logic decode_xcpt_valid_in;
+assign decode_xcpt_valid_in =  req_mul_valid
+                             & xcpt_decode_in.xcpt_illegal_instr;
 
 //////////////////////////////////////
 // Stall
@@ -180,9 +180,9 @@ begin
     `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
     `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
     
-    //         CLK    RST                    EN          DOUT                 DIN
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src1_id_ff[pp], rob_src1_id)
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src2_id_ff[pp], rob_src2_id)
+    //     CLK    EN          DOUT                DIN
+    `EN_FF(clock, update_rob, rob_src1_id_ff[pp], rob_src1_id)
+    `EN_FF(clock, update_rob, rob_src2_id_ff[pp], rob_src2_id)
 
     //     CLK   EN                     DOUT                   DIN
     `EN_FF(clock, update_rob_data1[pp], rob_src1_data_ff[pp], (rob_src1_hit & update_ff) ? rob_src1_data: writeValRF)
@@ -251,8 +251,8 @@ begin
         rob_src1_found_next[thread_id] = rob_src1_hit;
         rob_src2_found_next[thread_id] = rob_src2_hit;
 
-        stall_decode[thread_id] =  (  fetch_xcpt_valid
-                                    | decode_xcpt_valid ) ? 1'b0 : 
+        stall_decode[thread_id] =  (  fetch_xcpt_valid_in
+                                    | decode_xcpt_valid_in ) ? 1'b0 : 
                                    ( req_mul_valid      ) ?   ( rob_blocks_src1 
                                                                & !rob_src1_hit  
                                                                & (req_mul_info.ticket_src1 != req_mul_instr_id))
@@ -341,6 +341,7 @@ generate for(mulStage = 0; mulStage < `MUL_STAGES; mulStage++) //-1 because firs
 begin : gen_mul_stages
     // Local signals to mantain value in case of stall
     logic [`THR_PER_CORE_WIDTH-1:0] mul_thread_id_aux;
+    logic [`THR_PER_CORE_WIDTH-1:0] thread_id_out;
     logic                           instr_valid_aux;      
     logic [`PC_WIDTH-1:0]           req_wb_pc_aux;
     logic [`ALU_OVW_DATA_RANGE]     mul_oper_data_aux;
@@ -409,11 +410,11 @@ writeback_request_t     req_wb_info_next;
 logic                   req_wb_valid_ff;
 writeback_request_t     req_wb_info_ff;
 
-    //     CLK    RST                    DOUT             DIN                DEF
-`RST_EN_FF(clock, reset | flush_mul[kk], req_wb_valid_ff, req_wb_valid_next, '0)
+    //  CLK    RST    DOUT             DIN                DEF
+`RST_FF(clock, reset, req_wb_valid_ff, req_wb_valid_next, '0)
 
-    // CLK    DOUT                DIN                  
-`EN_FF(clock, req_wb_info_ff, req_wb_info_next)
+ // CLK    DOUT                DIN                  
+`FF(clock, req_wb_info_ff, req_wb_info_next)
 
 
 logic [`THR_PER_CORE_WIDTH-1:0] mul_stage_thread_id;

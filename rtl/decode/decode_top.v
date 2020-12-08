@@ -92,7 +92,7 @@ assign rd_addr = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id
                                                     fetch_instr_data[`INSTR_DST_ADDR_RANGE];
 
 assign opcode  = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].opcode :
-                 (req_to_mul_valid_ff[thread_id]) ? req_to_mul_info_ff[thread_id].opcode :                                                        
+                 (req_to_mul_valid_ff[thread_id]) ? `INSTR_MUL_OPCODE                    :                                                        
                                                     fetch_instr_data[`INSTR_OPCODE_ADDR_RANGE];
 
 assign ra_addr = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].ra_addr :
@@ -153,8 +153,8 @@ assign req_to_alu_valid_next =  ( flush_decode[thread_id]       ) ? 1'b0       :
                                 ( stall_decode[thread_id]       ) ? 1'b0       :
                                 ( fetch_instr_valid             ) ? !mul_instr : // New instruction from fetch and not MUL
                                 ( req_to_alu_valid_ff[thread_id]) ? !mul_instr_ff[thread_id] : // New instruction from fetch and not MUL
-                                (  xcpt_fetch.xcpt_itlb_miss
-                                 | xcpt_fetch.xcpt_bus_error
+                                (  xcpt_fetch_in.xcpt_itlb_miss
+                                 | xcpt_fetch_in.xcpt_bus_error
                                  | decode_xcpt_next.xcpt_illegal_instr) ? 1'b1: // There has been an xcpt
                                                                           1'b0;
 
@@ -163,7 +163,6 @@ assign req_to_alu_info      = req_to_alu_info_ff[previous_thread];
 assign req_to_alu_pc        = req_to_alu_pc_ff[previous_thread];
 assign req_to_alu_thread_id = previous_thread;
 
-logic [`THR_PER_CORE-1:0] update_info;
 genvar pp;
 generate for (pp=0; pp < `THR_PER_CORE; pp++) 
 begin
@@ -434,7 +433,6 @@ end
 logic [`REG_FILE_DATA_RANGE] ra_data;
 logic [`REG_FILE_DATA_RANGE] rb_data;   
 
-integer it;
 always_comb	
 begin
     // Exception
@@ -444,19 +442,19 @@ begin
     // Opcode and destination register are always decoded from the instruction
     // provided by the fetch stage
         // ALU
-    req_to_alu_instr_id                             = reorder_buffer_tail_ff[thread_id];
-    req_to_alu_info_next[thread_id].opcode          = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].opcode :
-                                                                                         opcode;
-    req_to_alu_info_next[thread_id].rd_addr         = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].rd_addr :
-                                                                                         rd_addr;
-    req_to_alu_info_next[thread_id].ra_addr         = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].ra_addr :
-                                                                                         ra_addr;
-    req_to_alu_info_next[thread_id].rb_addr         = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].rb_addr :
-                                                                                         rb_addr;  
-    req_to_alu_info_next[thread_id].ticket_src1     = ticket_src1;     
-    req_to_alu_info_next[thread_id].rob_blocks_src1 = rob_blocks_src1;  
-    req_to_alu_info_next[thread_id].ticket_src2     = ticket_src2;     
-    req_to_alu_info_next[thread_id].rob_blocks_src2 = rob_blocks_src2;  
+    req_to_alu_instr_id                  = reorder_buffer_tail_ff[thread_id];
+    req_to_alu_info_next.opcode          = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].opcode :
+                                                                              opcode;
+    req_to_alu_info_next.rd_addr         = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].rd_addr :
+                                                                              rd_addr;
+    req_to_alu_info_next.ra_addr         = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].ra_addr :
+                                                                              ra_addr;
+    req_to_alu_info_next.rb_addr         = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].rb_addr :
+                                                                              rb_addr;  
+    req_to_alu_info_next.ticket_src1     = ticket_src1;     
+    req_to_alu_info_next.rob_blocks_src1 = rob_blocks_src1;  
+    req_to_alu_info_next.ticket_src2     = ticket_src2;     
+    req_to_alu_info_next.rob_blocks_src2 = rob_blocks_src2;  
 
         // MUL                                                                              
     req_to_mul_instr_id                  = reorder_buffer_tail_ff[thread_id];
@@ -496,13 +494,13 @@ begin
 
                                                                                                          
     // Data for MUL and ALU
-    req_to_alu_info_next[thread_id].ra_data = ra_data;
-    req_to_alu_info_next[thread_id].rb_data = rb_data;
+    req_to_alu_info_next.ra_data = ra_data;
+    req_to_alu_info_next.rb_data = rb_data;
     req_to_mul_info_next.ra_data = ra_data;
     req_to_mul_info_next.rb_data = rb_data;
      
     // Encoding for ADDI and M-type instructions                                                                                                                     
-    req_to_alu_info_next[thread_id].offset = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].offset :
+    req_to_alu_info_next.offset = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].offset :
                                                                                 `ZX(`ALU_OFFSET_WIDTH,fetch_instr_data[14:0]);
 
     ////////////////////////////////////////////////
@@ -514,21 +512,21 @@ begin
     
         if ( is_branch_type_instr(opcode))// BEQ,BNE, BLT, BGT, BLE, BGE CASE
         begin
-            req_to_alu_info_next[thread_id].offset = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].offset :
+            req_to_alu_info_next.offset = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].offset :
                                                                                         `ZX(`ALU_OFFSET_WIDTH, {fetch_instr_data[`INSTR_OFFSET_HI_ADDR_RANGE], 
                                                                                                                 fetch_instr_data[`INSTR_OFFSET_LO_ADDR_RANGE]}); 
         end
         else if (is_jump_instr(opcode))  // JUMP CASE
         begin
-            req_to_alu_info_next[thread_id].offset = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].offset :
-                                                                                        `ZX(`ALU_OFFSET_WIDTH, {fetch_instr_data[`INSTR_OFFSET_HI_ADDR_RANGE], 
+            req_to_alu_info_next.offset = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].offset :
+                                                                             `ZX(`ALU_OFFSET_WIDTH, {fetch_instr_data[`INSTR_OFFSET_HI_ADDR_RANGE], 
                                                                                                                 fetch_instr_data[`INSTR_OFFSET_M_ADDR_RANGE], 
                                                                                                                 fetch_instr_data[`INSTR_OFFSET_LO_ADDR_RANGE]}); 
         end
         else //TLBWRITE
         begin
-            req_to_alu_info_next[thread_id].offset = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].offset :
-                                                                                        `ZX(`ALU_OFFSET_WIDTH, fetch_instr_data[`INSTR_OFFSET_LO_ADDR_RANGE]);
+            req_to_alu_info_next.offset = (req_to_alu_valid_ff[thread_id]) ? req_to_alu_info_ff[thread_id].offset :
+                                                                             `ZX(`ALU_OFFSET_WIDTH, fetch_instr_data[`INSTR_OFFSET_LO_ADDR_RANGE]);
             decode_xcpt_next.xcpt_illegal_instr = (priv_mode[thread_id] == User) ?  fetch_instr_valid
                                                                                   & !flush_decode[thread_id] : 
                                                                                   1'b0;
@@ -540,28 +538,28 @@ begin
         if (is_mov_instr(opcode))
         begin
             // rm1 : @ fault
-            req_to_alu_info_next[thread_id].ra_data = rm1_data[thread_id]; 
+            req_to_alu_info_next.ra_data = rm1_data[thread_id]; 
             if (req_to_alu_valid_ff[thread_id])
             begin
                 // rm0 : xcpt PC
                 if (fetch_instr_data_ff == 9'h001)
-                    req_to_alu_info_next[thread_id].ra_data = rm0_data[thread_id];
+                    req_to_alu_info_next.ra_data = rm0_data[thread_id];
                 // rm2 : xcpt type
                 else if(fetch_instr_data_ff == 9'h002)
-                    req_to_alu_info_next[thread_id].ra_data = rm2_data[thread_id];
+                    req_to_alu_info_next.ra_data = rm2_data[thread_id];
             end
             else
                 // rm0 : xcpt PC
                 if (fetch_instr_data[`INSTR_OFFSET_LO_ADDR_RANGE] == 9'h001)
-                    req_to_alu_info_next[thread_id].ra_data = rm0_data[thread_id];
+                    req_to_alu_info_next.ra_data = rm0_data[thread_id];
                 // rm2 : xcpt type
                 else if (fetch_instr_data[`INSTR_OFFSET_LO_ADDR_RANGE] == 9'h002)
-                    req_to_alu_info_next[thread_id].ra_data = rm2_data[thread_id];
+                    req_to_alu_info_next.ra_data = rm2_data[thread_id];
         end
         // IRET
         else if (is_iret_instr(opcode))
         begin
-            req_to_alu_info_next[thread_id].ra_data = rm0_data[thread_id];
+            req_to_alu_info_next.ra_data = rm0_data[thread_id];
         end
 
         // Raise an exception because the instruction is not supported
@@ -608,7 +606,7 @@ genvar ll;
 generate for (ll=0; ll < `THR_PER_CORE; ll++) 
 begin
     logic  writeEnRF_aux;
-    assign writeEnRF_aux = writeEnRF & !req_mt_mode & (ll == write_RF_thread_id);
+    assign writeEnRF_aux = writeEnRF & !req_mt_mode & (ll == write_thread_idRF);
 
     logic xcpt_valid_aux;
     assign xcpt_valid_aux = xcpt_valid & (ll == xcpt_thread_id) ;

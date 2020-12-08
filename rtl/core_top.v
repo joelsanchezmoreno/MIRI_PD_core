@@ -182,15 +182,14 @@ logic [`THR_PER_CORE-1:0]                   take_branch;
 logic [`THR_PER_CORE-1:0][`PC_WIDTH-1:0]    branch_pc;
 logic [`THR_PER_CORE-1:0]                   wb_xcpt_valid;
 
-always_comb
+genvar i;
+generate for (i=0; i < `THR_PER_CORE; i++) 
 begin
-    for a
-    begin
-        wb_xcpt_valid[i] = (wb_xcpt_valid_o && i == wb_xcpt_thread_id);
-        take_branch[i]   = (alu_take_branch && i == alu_branch_thr_id) | wb_xcpt_valid[i];
-        branch_pc[i]     = (wb_xcpt_valid[i]) ? `CORE_XCPT_ADDRESS : alu_branch_pc;
-    end
+    assign wb_xcpt_valid[i] = (wb_xcpt_valid_o && i == wb_xcpt_thread_id);
+    assign take_branch[i]   = (alu_take_branch && i == alu_branch_thr_id) | wb_xcpt_valid[i];
+    assign branch_pc[i]     = (wb_xcpt_valid[i]) ? `CORE_XCPT_ADDRESS : alu_branch_pc;
 end
+endgenerate
 
 fetch_top
 fetch_top
@@ -265,10 +264,9 @@ decode_top
                          | reorder_buffer_full  ),
 
     .flush_decode       (  take_branch 
-                         | wb_xcpt_valid       
                          | wb_flush_pipeline    ),
 
-    .flush_rob          ( wb_xcpt_valid         ),
+    .flush_rob          ( wb_flush_pipeline     ),
 
     // Exceptions from fetch
     .xcpt_fetch_in      ( xcpt_fetch_to_decode  ), 
@@ -305,7 +303,7 @@ decode_top
     .write_thread_idRF  ( wb_write_thread_idRF  ),
 
     // Exceptions values to be stored on the RF
-    .xcpt_valid         ( wb_xcpt_valid         ),
+    .xcpt_valid         ( wb_xcpt_valid_o       ),
     .rmPC               ( wb_rmPC               ),
     .rmAddr             ( wb_rmAddr             ),
     .xcpt_type          ( wb_xcpt_type          ),
@@ -327,8 +325,7 @@ mul_top
     .reset              ( reset                 ),
 
     // Stall pipeline
-    .flush_mul          (  wb_xcpt_valid         
-                         | wb_flush_pipeline    ),
+    .flush_mul          ( wb_flush_pipeline     ),
     .stall_decode       ( mul_stall_pipeline    ),
     
     // Request from decode stage
@@ -385,8 +382,7 @@ alu_top
 
     // Stall pipeline
     .dcache_ready       ( dcache_ready              ),
-    .flush_alu          (  wb_xcpt_valid             
-                         | wb_flush_pipeline        ),
+    .flush_alu          ( wb_flush_pipeline         ),
     .stall_decode       ( alu_stall_pipeline        ),
 
     // Exceptions
@@ -442,21 +438,23 @@ alu_top
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 dcache_request_t                req_to_dcache_info;
+dcache_request_t                req_to_dcache_info_ff;
 logic                           req_to_dcache_valid;
 logic [`THR_PER_CORE_WIDTH-1:0] req_to_dcache_thread_id;
+
+ // CLK    DOUT                   DIN                  
+`FF(clock, req_to_dcache_info_ff, req_to_dcache_info)
 
 assign req_to_dcache_valid =   wb_req_to_dcache_valid 
                              | alu_req_to_dcache_valid;
 
 assign req_to_dcache_info  = (  !wb_req_to_dcache_valid
-                              & !alu_req_to_dcache_valid) ? req_to_dcache_info    :
+                              & !alu_req_to_dcache_valid) ? req_to_dcache_info_ff :
                              ( wb_req_to_dcache_valid )   ? wb_req_to_dcache_info :
                                                             alu_req_to_dcache_info;   
 
-assign req_to_dcache_thread_id = (  !wb_req_to_dcache_valid
-                                  & !alu_req_to_dcache_valid) ? req_to_dcache_thread_id :
-                                 ( wb_req_to_dcache_valid )   ? wb_req_to_dcache_thread_id :
-                                                                alu_req_to_dcache_thread_id;   
+assign req_to_dcache_thread_id = ( wb_req_to_dcache_valid ) ? wb_req_to_dcache_thread_id :
+                                                              alu_req_to_dcache_thread_id;   
 cache_top
 cache_top
 (
@@ -468,8 +466,7 @@ cache_top
 
     // Control signals
     .dcache_ready   ( dcache_ready          ),
-    .flush_cache    (  wb_xcpt_valid 
-                     | wb_flush_cache       ),
+    .flush_cache    ( wb_flush_cache        ),
 
     // Request from the ALU stage
     .req_valid      ( req_to_dcache_valid    ), 
@@ -540,12 +537,12 @@ wb_top
     .cache_thread_id        ( cache_req_to_wb_thread_id ),
 
     // Request to Cache
-    .cache_stage_ready      ( alu_cache_stage_free      ), 
-    .cache_ready            ( dcache_ready              ),
-    .cache_active_thread    ( cache_active_thread       ),
-    .req_to_dcache_valid    ( wb_req_to_dcache_valid    ),
-    .req_to_dcache_info     ( wb_req_to_dcache_info     ),
-    .req_to_dcache_thread_id( wb_req_to_dcache_thread_id),
+    .cache_stage_free_next_cycle( alu_cache_stage_free      ), 
+    .cache_ready                ( dcache_ready              ),
+    .cache_thread_next_cycle    ( req_to_alu_thread_id      ),
+    .req_to_dcache_valid        ( wb_req_to_dcache_valid    ),
+    .req_to_dcache_info         ( wb_req_to_dcache_info     ),
+    .req_to_dcache_thread_id    ( wb_req_to_dcache_thread_id),
 
     // Request to RF
     .req_to_RF_data         ( wb_writeValRF             ),

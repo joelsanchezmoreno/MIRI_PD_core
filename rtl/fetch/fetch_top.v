@@ -76,8 +76,9 @@ begin
         // CLK    EN                      DOUT              DIN
     `EN_FF(clock, take_branch_update[ll], branch_pc_ff[ll], branch_pc[ll])
     
-    assign branch_executed[ll]    = (  (take_branch[ll] & thread_is_active) // received branch same cycle that thread is active
-                                     | (take_branch_ff[ll] & icache_ready[ll]      & thread_is_active)); // wanted to do a branch, icache is ready and thread is active
+    assign branch_executed[ll] =  thread_is_active 
+                                & icache_ready[ll]
+                                &(take_branch[ll] | take_branch_ff[ll]);
     
     assign take_branch_update[ll] = (!take_branch_ff[ll] & (take_branch[ll])) ? 1'b1 : // branch request received
                                     (branch_executed[ll])                     ? 1'b1 : // new PC has been requested and updated
@@ -98,7 +99,7 @@ assign active_thread_next = (active_thread_ff == `THR_PER_CORE - 1'b1) ? '0 : //
                                                                         active_thread_ff + 1'b1;
 
 arb_rr
-#(.NUM_REQS = `THR_PER_CORE)
+#(.NUM_REQS (`THR_PER_CORE))
 arb_rr_next_thread 
 (
     .clock      ( clock             ),
@@ -155,8 +156,8 @@ endgenerate
 
 fetch_xcpt_t   xcpt_fetch_next;
 
-    // CLK    DOUT        DIN                   
-`EN_FF(clock, xcpt_fetch, xcpt_fetch_next)
+ // CLK    DOUT        DIN                   
+`FF(clock, xcpt_fetch, xcpt_fetch_next)
 
 logic   xcpt_bus_error_aux;
 logic   xcpt_itlb_miss;
@@ -236,7 +237,7 @@ end
 /////////////////////////////////////////
 // Instruction Cache instance
 
-instruction_cache
+instruction_cache_mt
 icache(
     // System signals
     .clock              ( clock                 ),
@@ -286,7 +287,7 @@ itlb
     .rsp_valid          ( iTlb_rsp_valid                ), 
     .tlb_miss           ( xcpt_itlb_miss                ), 
     .rsp_phy_addr       ( iTlb_rsp_phy_addr             ), 
-    .writePriv          ( tlb_wr_priv[active_thread]    ), //unused for Icache
+    .writePriv          ( tlb_wr_priv                   ), //unused for Icache
     
     // Write request from the O.S
     .new_tlb_entry      ( new_tlb_entry                 ),

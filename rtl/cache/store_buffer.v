@@ -111,7 +111,9 @@ generate for(genvar i = 0; i < `DCACHE_ST_BUFFER_NUM_ENTRIES; ++i) begin
 end
 endgenerate
 
-integer j,k,thread_id;
+integer j;
+integer k;
+integer thread_id;
 
 logic [`DCACHE_ST_BUFFER_ENTRIES_WIDTH-1:0] free_pos;
 
@@ -164,7 +166,7 @@ begin
                 // TAG
                 if (  search_tag[thread_id] == store_buffer_info_ff[k].addr[`DCACHE_TAG_ADDR_RANGE]
                     & store_buffer_valid_ff[k] 
-                    & store_buffer_info_ff[k].thread_id == thread_id )
+                    & (store_buffer_info_ff[k].thread_id == thread_id))
                 begin
                     search_rsp_hit_tag[thread_id]  = 1'b1;
                     `ifdef VERBOSE_STORE_BUFFER
@@ -183,7 +185,7 @@ begin
                 // way
                 if (   search_way[thread_id] == store_buffer_info_ff[k].way 
                      & store_buffer_valid_ff[k]
-                     & store_buffer_info_ff[k].thread_id == thread_id  )
+                     & (store_buffer_info_ff[k].thread_id == thread_id ))
                 begin
                     `ifdef VERBOSE_STORE_BUFFER
                         $display("[STORE BUFFER] search_rsp_hit_way has been asserted");

@@ -48,6 +48,7 @@ logic [`TLB_NUM_WAYS_RANGE]     replace_tlb_pos;
 //////////////////////////////////////////////////
 // Position of the victim to be evicted from the TLB
 logic [`TLB_NUM_SET_RANGE]      req_addr_set;  
+logic [`TLB_NUM_SET_RANGE]      req_addr_set_tlb;  
 logic [`TLB_WAYS_PER_SET_RANGE] victim_way; 
 
 integer iter;
@@ -108,8 +109,8 @@ begin
     // Update TLB
     if ( new_tlb_entry )
     begin
-        req_addr_set            = new_tlb_info.virt_addr[`TLB_SET_ADDR_RANGE];
-        replace_tlb_pos         = victim_way + req_addr_set*`TLB_WAYS_PER_SET;
+        req_addr_set_tlb        = new_tlb_info.virt_addr[`TLB_SET_ADDR_RANGE];
+        replace_tlb_pos         = victim_way + req_addr_set_tlb*`TLB_WAYS_PER_SET;
 
         tlb_valid[replace_tlb_pos]  = 1'b1;
         tlb_cache[replace_tlb_pos].va_addr_tag   = new_tlb_info.virt_addr[`VIRT_ADDR_TAG_RANGE];
@@ -129,7 +130,7 @@ end
 logic                           update_en;
 logic [`TLB_WAYS_PER_SET_RANGE] update_way;  
 
-assign update_en    = (req_valid & !tlb_miss) | new_tlb_entry;
+assign update_en    = (req_valid & !tlb_miss);
 
 assign update_way   = (req_valid & !tlb_miss  ) ? hit_way :
                                                   victim_way;              
@@ -157,10 +158,17 @@ tlb_lru
     // Victim way
     .victim_way         ( victim_way        ),
 
-    // Update the LRU logic
+    // Update the LRU logic for thread_id
     .update_req         ( update_en         ),
     .update_set         ( req_addr_set      ),
-    .update_way         ( update_way        )
+    .update_way         ( update_way        ),
+
+    // Update the LRU logic for a second thread
+    // Not needed for TLB
+    .update_req_mt      ( new_tlb_entry      ),
+    .update_set_mt      ( req_addr_set_tlb   ),
+    .update_way_mt      ( victim_way         ),
+    .update_thread_mt   ( new_tlb_thread_id  )
 );
 
 endmodule 

@@ -94,8 +94,8 @@ begin
     rd_en_fifo = (pop & mem_valid);
 
         // Update write and read pointers
-    wr_pointer_next = (wr_pointer == (MEM_DEPTH-1)) ? {PTR_W {1'b0}} : wr_pointer + 1'b1;
-    rd_pointer_next = (rd_pointer == (MEM_DEPTH-1)) ? {PTR_W {1'b0}} : rd_pointer + 1'b1;
+    wr_pointer_next = (wr_pointer == (MEM_DEPTH-1)) ? '0 : wr_pointer + 1'b1;
+    rd_pointer_next = (rd_pointer == (MEM_DEPTH-1)) ? '0 : rd_pointer + 1'b1;
 end
 
 /////////////////////////////
