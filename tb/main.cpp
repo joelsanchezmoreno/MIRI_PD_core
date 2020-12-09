@@ -15,7 +15,7 @@ static void usage(char *argv[]);
 
 static void usage(char *argv[])
 {
-	printf("Source code: https://github.com/marcigarza/PA-MIPS-Processor\n"
+	printf("Source code: https://github.com/joelsanchezmoreno/MIRI_PD_core\n"
 		"Usage: %s [OPTIONS]\n"
 		"Options:\n"
 		"  -n, --num-cycles=N      number of cycles to be executed before stopping\n"
