@@ -106,8 +106,8 @@ decode_xcpt_t   [`THR_PER_CORE-1:0][`ALU_MUL_LATENCY:0]             mul_xcpt_dec
 mul_xcpt_t      [`THR_PER_CORE-1:0][`ALU_MUL_LATENCY:0]             mul_xcpt_stages_next;
 mul_xcpt_t      [`THR_PER_CORE-1:0][`ALU_MUL_LATENCY:0]             mul_xcpt_stages_ff;
 
-//  CLK    DOUT                  DIN
-`FF(clock, mul_thread_id_ff[ii], mul_thread_id_next[ii])
+//  CLK    DOUT              DIN
+`FF(clock, mul_thread_id_ff, mul_thread_id_next)
 
 genvar ii;
 generate for (ii=0; ii < `THR_PER_CORE; ii++) 

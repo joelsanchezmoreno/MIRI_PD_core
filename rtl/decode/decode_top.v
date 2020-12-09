@@ -212,7 +212,7 @@ begin
     assign update_ff = fetch_instr_valid & (kk == thread_id); 
  
     logic update_info;
-    assign update_info = (pp == thread_id);
+    assign update_info = (kk == thread_id);
 
         //     CLK    RST                       EN                             DOUT                     DIN                   DEF
     `RST_EN_FF(clock, reset | flush_decode[kk], update_ff | !stall_decode[kk], req_to_mul_valid_ff[kk], req_to_mul_valid_next, '0)
