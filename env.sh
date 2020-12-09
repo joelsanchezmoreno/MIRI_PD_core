@@ -1,6 +1,6 @@
 # Source file for environment variables
 
-export VERILATOR_ROOT="/home/jsanchez/new-verilator/verilator"
+export VERILATOR_ROOT="/home/jsanchez/new-verilator2/verilator"
 
 #Detect the path to the top of the repo from which we are calling the script
 export REPOROOT=$( cd $(dirname "$1"); pwd -P)
