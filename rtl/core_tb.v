@@ -335,9 +335,9 @@ begin
     `endif
 end
 
-/*
 always_ff @(posedge clk_i) 
 begin
+    /*
     // If there is a request from the D$ and we are not busy sending the
     // response for the I$ we perform the D$ request
     if (dcache_req_valid_ff & !wait_rsp_icache_ff)
@@ -361,8 +361,8 @@ begin
             `endif 
         end
     end
-
-    if ( rsp_mm_data == '1 & rsp_mm_valid & !dcache_req_valid_ff)
+    */
+    if ( rsp_mm_data == '1 & rsp_mm_valid & !req_mm_info_is_dcache_ff)
     begin
         $display("[CORE TB] Finishing simulation, we found all NOPs on memory");
 
@@ -379,7 +379,7 @@ begin
         $finish;
     end
 end
-*/
+
 `endif
 
 endmodule

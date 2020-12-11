@@ -116,7 +116,8 @@ arb_rr_next_thread
 // the same cycle so it can be scheduled. Othwerise, we look for the next
 // thread that is ready to go using a RR approach. If no threads are ready,
 // then no request is sent to Decode stage.
-assign active_thread = (icache_ready[active_thread_ff]) ? active_thread_ff : //Thread has no pendent memory requests
+assign active_thread = (mt_mode  == Single_Threaded) ? '0 : 
+                       (icache_ready[active_thread_ff]) ? active_thread_ff : //Thread has no pendent memory requests
                        (rsp_valid_miss & (rsp_thread_id == active_thread_ff)) ? active_thread_ff : //Thread received response from MM
                        (|icache_ready) ? next_ready_thread : //Schedule next thread that is ready to go
                        active_thread_ff; // if no thread is ready, keep the same thrID and use inject a bubble                       
@@ -137,16 +138,18 @@ begin
         //     CLK    RST    EN                              DOUT                     DIN                           DEF
     `RST_EN_FF(clock, reset, program_counter_update[thr_id], program_counter[thr_id], program_counter_next[thr_id], boot_addr)
     
-    assign program_counter_update[thr_id]   = (  !thread_is_active  
+    assign program_counter_update[thr_id]   = (  reset
+                                               | !thread_is_active  
                                                | stall_fetch[thr_id] 
                                                | !icache_ready[thr_id]) ? 1'b0 : 1'b1; 
     
     assign program_counter_next[thr_id]     = (  thread_is_active 
                                                & take_branch[thr_id] 
-                                               & icache_ready[thr_id]           ) ? branch_pc[thr_id] : 
+                                               & icache_ready[thr_id] ) ? branch_pc[thr_id] : 
                                               (  thread_is_active
                                                & take_branch_ff[thr_id]  
                                                & icache_ready[thr_id] ) ? branch_pc_ff[thr_id] :
+                                              (req_valid_miss)          ? program_counter[thr_id] :
                                                                           program_counter[thr_id] + 4;
 end
 endgenerate
@@ -186,7 +189,8 @@ begin
 end
 endgenerate
 
-assign itlb_req_valid = (stall_fetch[active_thread])    ? 1'b0 :
+assign itlb_req_valid = (reset)                         ? 1'b0 :
+                        (stall_fetch[active_thread])    ? 1'b0 :
                         (stall_fetch_ff[active_thread]) ? 1'b1 : // !stall_fetch & stall_fetch_ff
                                                           program_counter_update[active_thread];                                                    
 

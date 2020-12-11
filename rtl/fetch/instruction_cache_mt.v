@@ -73,10 +73,10 @@ logic [`THR_PER_CORE-1:0][`ICACHE_WAYS_PER_SET_RANGE]   miss_icache_way_ff;
 //////////////////////////////////////////////////
 // Ready signal to stall the pipeline if ICache is busy
 logic   [`THR_PER_CORE-1:0] icache_ready_next, icache_ready_ff;
-assign icache_ready = icache_ready_ff; //icache_ready_next;
+assign icache_ready = !reset & icache_ready_ff; //icache_ready_next;
 
     //  CLK    RST    DOUT             DIN                DEF
-`RST_FF(clock, reset, icache_ready_ff, icache_ready_next, '0)
+`RST_FF(clock, reset, icache_ready_ff, icache_ready_next, '1)
 
 logic   [`THR_PER_CORE-1:0] pendent_req, pendent_req_ff;
 

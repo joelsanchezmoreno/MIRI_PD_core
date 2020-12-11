@@ -243,8 +243,8 @@ assign req_wb_valid_next = ( flush_alu[thread_id]   ) ? 1'b0 :
                            (  fetch_xcpt_valid
                             | decode_xcpt_valid     
                             | xcpt_alu.xcpt_overflow) ? 1'b1 : 
-                           ( req_alu_valid          ) ? alu_to_wb_intr :
                            ( stall_decode[thread_id]) ? 1'b0 :
+                           ( req_alu_valid          ) ? alu_to_wb_intr :
                                                         (  req_alu_valid_ff[thread_id]
                                                          & alu_to_wb_intr_ff[thread_id]);
 
@@ -304,9 +304,9 @@ begin
     logic update_ff;
     assign update_ff = (thread_id == pp);
 
-        //      CLK   RST                    EN         DOUT                   DIN                       DEF
-    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
-    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
+        //      CLK   RST                    EN                           DOUT                   DIN                       DEF
+    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff & rob_blocks_src1, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
+    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff & rob_blocks_src2, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
     
     //     CLK    EN         DOUT                DIN
     `EN_FF(clock, update_ff, rob_src1_id_ff[pp], rob_src1_id)
@@ -384,10 +384,12 @@ begin
                                                               & !rob_src2_hit  
                                                               & (req_alu_info.ticket_src2 != req_alu_instr_id)) :
                                   ( req_alu_valid_ff[thread_id]) ?  ( rob_blocks_src1 
-                                                                     & !rob_src1_hit  
+                                                                     & !rob_src1_hit 
+                                                                     & !rob_src1_found_ff[thread_id] 
                                                                      & (req_alu_info_ff[thread_id].ticket_src1 != req_alu_instr_id_ff[thread_id]))
                                                                   | ( rob_blocks_src2 
                                                                      & !rob_src2_hit  
+                                                                     & !rob_src2_found_ff[thread_id] 
                                                                      & (req_alu_info_ff[thread_id].ticket_src2 != req_alu_instr_id_ff[thread_id])) :
                                                                   1'b0;
     end
@@ -400,8 +402,8 @@ begin
     begin
         for (ll = 0; ll < `THR_PER_CORE; ll++)
         begin
-            update_rob_data1[ll] = rob_src1_hit & (thread_id == ll);
-            update_rob_data2[ll] = rob_src2_hit & (thread_id == ll);
+            update_rob_data1[ll] = rob_blocks_src1 & rob_src1_hit & (thread_id == ll);
+            update_rob_data2[ll] = rob_blocks_src2 & rob_src2_hit & (thread_id == ll);
 
             // Check if there the thread RF being written is waiting for a value
             if(write_thread_idRF == ll)
