@@ -13,7 +13,7 @@ module alu_top
     // Stall pipeline
     input   logic [`THR_PER_CORE-1:0]       flush_alu,
     input   logic [`THR_PER_CORE-1:0]       dcache_ready,
-    output  logic [`THR_PER_CORE-1:0]       stall_decode,
+    output  logic [`THR_PER_CORE-1:0]       stall_decode_o,
 
     // Exceptions
     input   fetch_xcpt_t                    xcpt_fetch_in,
@@ -68,6 +68,25 @@ logic [`THR_PER_CORE_WIDTH-1:0] previous_thread;
  // CLK    DOUT             DIN            
 `FF(clock, previous_thread, thread_id)
 
+//////////////////////////////////////
+// Stall
+logic [`THR_PER_CORE-1:0] stall_decode;
+logic [`THR_PER_CORE-1:0] stall_decode_ff;
+
+genvar jj;
+generate for (jj=0; jj < `THR_PER_CORE; jj++) 
+begin
+    logic update_ff;
+    assign update_ff = (jj == thread_id);
+
+        //      CLK    RST                   EN         DOUT                 DIN               DEF
+    `RST_EN_FF(clock, reset | flush_alu[jj], update_ff, stall_decode_ff[jj], stall_decode[jj], 1'b0)
+end
+endgenerate
+
+//assign stall_decode_o = stall_decode_ff;
+assign stall_decode_o = stall_decode;
+
 
 logic [`THR_PER_CORE-1:0]                       req_alu_valid_ff;
 alu_request_t [`THR_PER_CORE-1:0]               req_alu_info_ff;
@@ -91,20 +110,6 @@ end
 endgenerate
 
 
-//////////////////////////////////////
-// Stall
-logic [`THR_PER_CORE-1:0] stall_decode_ff;
-
-genvar jj;
-generate for (jj=0; jj < `THR_PER_CORE; jj++) 
-begin
-    logic update_ff;
-    assign update_ff = (jj == thread_id);
-
-        //      CLK    RST                   EN         DOUT                 DIN               DEF
-    `RST_EN_FF(clock, reset | flush_alu[jj], update_ff, stall_decode_ff[jj], stall_decode[jj], 1'b0)
-end
-endgenerate
 
 //////////////////////////////////////
 // Exceptions
@@ -245,8 +250,9 @@ assign req_wb_valid_next = ( flush_alu[thread_id]   ) ? 1'b0 :
                             | xcpt_alu.xcpt_overflow) ? 1'b1 : 
                            ( stall_decode[thread_id]) ? 1'b0 :
                            ( req_alu_valid          ) ? alu_to_wb_intr :
-                                                        (  req_alu_valid_ff[thread_id]
-                                                         & alu_to_wb_intr_ff[thread_id]);
+                           ( stall_decode_ff[thread_id]) ? (  req_alu_valid_ff[thread_id]
+                                                            & alu_to_wb_intr_ff[thread_id]) :
+                                                           1'b0;
 
                                                     
 assign req_wb_valid     = (flush_alu[previous_thread]) ? 1'b0 : req_wb_valid_ff;
@@ -331,13 +337,18 @@ begin
         rob_blocks_src1 = req_alu_info.rob_blocks_src1;
         rob_blocks_src2 = req_alu_info.rob_blocks_src2;
     end
-    else
+    else if (stall_decode_ff[thread_id]) //TODO: Should be pendent request not stall_decode_ff in case of multithreading
     begin
-        rob_src1_id = req_alu_info_ff[thread_id].ticket_src1;
-        rob_src2_id = req_alu_info_ff[thread_id].ticket_src2;
+        rob_src1_id = rob_src1_id_ff[thread_id];
+        rob_src2_id = rob_src2_id_ff[thread_id];
 
         rob_blocks_src1 = req_alu_info_ff[thread_id].rob_blocks_src1;
         rob_blocks_src2 = req_alu_info_ff[thread_id].rob_blocks_src2;
+    end
+    else
+    begin
+        rob_blocks_src1 = '0;
+        rob_blocks_src2 = '0;
     end
 
     rob_src1_found_next = rob_src1_found_ff;
@@ -374,14 +385,20 @@ begin
     // if !stall_decode
     else
     begin   
-        rob_src1_found_next[thread_id] = rob_src1_hit;
-        rob_src2_found_next[thread_id] = rob_src2_hit;
+        rob_src1_found_next[thread_id] =  rob_src1_hit //hit on RoB
+                                        | (   writeEnRF && write_thread_idRF == thread_id 
+                                           && write_rob_idRF == rob_src1_id[thread_id]); //hit on RF write
+
+        rob_src2_found_next[thread_id] = rob_src2_hit //hit on RoB
+                                        | (   writeEnRF && write_thread_idRF == thread_id 
+                                           && write_rob_idRF == rob_src2_id[thread_id]); //hit on RF write
+
         stall_decode[thread_id] = ( fetch_xcpt_valid | decode_xcpt_valid ) ? 1'b0 : 
                                   ( req_alu_valid      ) ?   ( rob_blocks_src1 
-                                                              & !rob_src1_hit  
+                                                              & !rob_src1_found_next[thread_id]  
                                                               & (req_alu_info.ticket_src1 != req_alu_instr_id))
                                                            | ( rob_blocks_src2 
-                                                              & !rob_src2_hit  
+                                                              & !rob_src2_found_next[thread_id]  
                                                               & (req_alu_info.ticket_src2 != req_alu_instr_id)) :
                                   ( req_alu_valid_ff[thread_id]) ?  ( rob_blocks_src1 
                                                                      & !rob_src1_hit 
@@ -398,37 +415,38 @@ begin
     // needed
     update_rob_data1 = '0;
     update_rob_data2 = '0;
-    if (writeEnRF)
+    for (ll = 0; ll < `THR_PER_CORE; ll++)
     begin
-        for (ll = 0; ll < `THR_PER_CORE; ll++)
-        begin
-            update_rob_data1[ll] = rob_blocks_src1 & rob_src1_hit & (thread_id == ll);
-            update_rob_data2[ll] = rob_blocks_src2 & rob_src2_hit & (thread_id == ll);
+            // Check if we hit on the RoB
+        update_rob_data1[ll] = rob_blocks_src1 & rob_src1_hit & (thread_id == ll);
+        update_rob_data2[ll] = rob_blocks_src2 & rob_src2_hit & (thread_id == ll);
 
-            // Check if there the thread RF being written is waiting for a value
-            if(write_thread_idRF == ll)
+            // Check if the thread RF being written is waiting for a value
+        if(writeEnRF && write_thread_idRF == ll)
+        begin
+            // Check if the register being written is the one the thr was
+            // waiting for
+            if(write_rob_idRF == rob_src1_id[ll]) //check src1
             begin
-                // Check if the register being written is the one the thr was
-                // waiting for
-                if(write_rob_idRF == rob_src1_id_ff[ll]) //check src1
-                begin
-                    rob_src1_found_next[ll] = 1'b1;
-                    update_rob_data1[ll]    = 1'b1;
-                end
-                if(write_rob_idRF == rob_src2_id_ff[ll]) //check src2
-                begin
-                    rob_src2_found_next[ll] = 1'b1;
-                    update_rob_data2[ll]    = 1'b1;
-                end
-            end // threadID matches
-        end // for loop
-    end //writeEnRF
+                rob_src1_found_next[ll] = 1'b1;
+                update_rob_data1[ll]    = 1'b1;
+            end
+            if(write_rob_idRF == rob_src2_id[ll]) //check src2
+            begin
+                rob_src2_found_next[ll] = 1'b1;
+                update_rob_data2[ll]    = 1'b1;
+            end
+        end // weiteEnRF and threadID matches
+    end // for loop
 end
 
 logic   [`ALU_OFFSET_RANGE]     offset;  // Offset value
 
 logic [`REG_FILE_DATA_RANGE] rf_data;
 logic [`INSTR_OPCODE_RANGE]  opcode;
+logic intercept_rf_write_src1;
+logic intercept_rf_write_src2;
+
 always_comb
 begin
     rf_data = '0;
@@ -452,14 +470,25 @@ begin
     xcpt_alu.xcpt_overflow = 1'b0 ;
     xcpt_alu.xcpt_pc       = (req_alu_valid) ? req_alu_pc : req_alu_pc_ff[thread_id];
 
-    ra_data = ( rob_blocks_src1 ) ? (rob_src1_hit) ? rob_src1_data    : 
-                                                     rob_src1_data_ff :
+
+    intercept_rf_write_src1 = (   writeEnRF && write_thread_idRF == thread_id 
+                               && write_rob_idRF == rob_src1_id_ff[thread_id]);
+
+    intercept_rf_write_src2 = (   writeEnRF && write_thread_idRF == thread_id 
+                               && write_rob_idRF == rob_src2_id_ff[thread_id]);
+
+
+
+    ra_data = ( rob_blocks_src1 ) ? (rob_src1_hit) ? rob_src1_data         : // data from RoB
+                                    (intercept_rf_write_src1) ? writeValRF : // data from RF write   
+                                                                rob_src1_data_ff :
                                     (req_alu_valid)? req_alu_info.ra_data        :
                                                      req_alu_info_ff[thread_id].ra_data;
 
 
-    rb_data = ( rob_blocks_src2 ) ? (rob_src2_hit) ? rob_src2_data    : 
-                                                     rob_src2_data_ff :
+    rb_data = ( rob_blocks_src2 ) ? (rob_src2_hit) ? rob_src2_data         : // data from RoB
+                                    (intercept_rf_write_src2) ? writeValRF : // data from RF write   
+                                                                rob_src2_data_ff : // stored data
                                     (req_alu_valid)? req_alu_info.rb_data        :
                                                      req_alu_info_ff[thread_id].rb_data;
 

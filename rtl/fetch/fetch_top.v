@@ -125,6 +125,7 @@ assign active_thread = (mt_mode  == Single_Threaded) ? '0 :
 /////////////////////////////////////////
 // Program counter
 logic   [`THR_PER_CORE-1:0][`PC_WIDTH-1:0] program_counter;
+logic   [`THR_PER_CORE-1:0][`PC_WIDTH-1:0] program_counter_ff;
 logic   [`THR_PER_CORE-1:0][`PC_WIDTH-1:0] program_counter_next;
 logic   [`THR_PER_CORE-1:0]                program_counter_update;
 
@@ -135,8 +136,12 @@ begin
     logic thread_is_active;
     assign thread_is_active = (active_thread == thr_id);
 
-        //     CLK    RST    EN                              DOUT                     DIN                           DEF
-    `RST_EN_FF(clock, reset, program_counter_update[thr_id], program_counter[thr_id], program_counter_next[thr_id], boot_addr)
+    assign program_counter[thr_id] = (  mt_mode  == Single_Threaded 
+                                      & stall_fetch_ff[thr_id]      ) ? program_counter_ff[thr_id] - 4  : 
+                                                                        program_counter_ff[thr_id];
+
+        //     CLK    RST    EN                              DOUT                        DIN                           DEF
+    `RST_EN_FF(clock, reset, program_counter_update[thr_id], program_counter_ff[thr_id], program_counter_next[thr_id], boot_addr)
     
     assign program_counter_update[thr_id]   = (  reset
                                                | !thread_is_active  
@@ -149,8 +154,8 @@ begin
                                               (  thread_is_active
                                                & take_branch_ff[thr_id]  
                                                & icache_ready[thr_id] ) ? branch_pc_ff[thr_id] :
-                                              (req_valid_miss)          ? program_counter[thr_id] :
-                                                                          program_counter[thr_id] + 4;
+                                              (req_valid_miss)          ? program_counter_ff[thr_id] :
+                                                                          program_counter_ff[thr_id] + 4;
 end
 endgenerate
 

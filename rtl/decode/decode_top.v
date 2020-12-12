@@ -150,15 +150,16 @@ endgenerate
 
 /////////////////////////////////////////
 // Control logic for requests to be sent to ALU
+logic [`THR_PER_CORE-1:0] saved_request;
 
 assign req_to_alu_valid_next =  ( flush_decode[thread_id]       ) ? 1'b0       : // Invalidate instruction
                                 ( stall_decode[thread_id]       ) ? 1'b0       :
                                 ( fetch_instr_valid             ) ? !mul_instr : // New instruction from fetch and not MUL
-                                ( req_to_alu_valid_ff[thread_id]) ? !mul_instr_ff[thread_id] : // New instruction from fetch and not MUL
                                 (  xcpt_fetch_in.xcpt_itlb_miss
                                  | xcpt_fetch_in.xcpt_bus_error
                                  | decode_xcpt_next.xcpt_illegal_instr) ? 1'b1: // There has been an xcpt
-                                                                          1'b0;
+                                ( saved_request[thread_id]      ) ? !mul_instr_ff[thread_id] : // There is a pendent instr 
+                                                                    1'b0;
 
 assign req_to_alu_valid     = (flush_decode[previous_thread]) ? 1'b0 : req_to_alu_valid_ff[previous_thread];
 assign req_to_alu_info      = req_to_alu_info_ff[previous_thread];
@@ -169,13 +170,20 @@ genvar pp;
 generate for (pp=0; pp < `THR_PER_CORE; pp++) 
 begin
     logic update_ff;
-    assign update_ff = fetch_instr_valid & (pp == thread_id);
+    assign update_ff = (pp == thread_id);
 
     logic update_info;
     assign update_info = (pp == thread_id);
     
-        //     CLK    RST                       EN                             DOUT                     DIN                    DEF
-    `RST_EN_FF(clock, reset | flush_decode[pp], update_ff | !stall_decode[pp], req_to_alu_valid_ff[pp], req_to_alu_valid_next, '0)
+        //     CLK    RST                       EN          DOUT                     DIN                    DEF
+    `RST_EN_FF(clock, reset | flush_decode[pp], update_ff, req_to_alu_valid_ff[pp], req_to_alu_valid_next, '0)
+
+    logic saved_request_en;
+    assign saved_request_en = update_ff & (  (fetch_instr_valid && stall_decode[pp]) // req received & stall
+                                           | (saved_request[pp] & !stall_decode[pp])); // req saved and performed
+    
+        //     CLK    RST                       EN                DOUT               DIN                                      DEF
+    `RST_EN_FF(clock, reset | flush_decode[pp], saved_request_en, saved_request[pp], (fetch_instr_valid && stall_decode[pp]), '0)
     
         // CLK    EN         DOUT                  DIN            
     `EN_FF(clock, update_ff, req_to_alu_pc_ff[pp], fetch_instr_pc)

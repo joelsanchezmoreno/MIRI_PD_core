@@ -383,7 +383,7 @@ alu_top
     // Stall pipeline
     .dcache_ready       ( dcache_ready              ),
     .flush_alu          ( wb_flush_pipeline         ),
-    .stall_decode       ( alu_stall_pipeline        ),
+    .stall_decode_o     ( alu_stall_pipeline        ),
 
     // Exceptions
     .xcpt_fetch_in      ( xcpt_fetch_to_alu         ),
