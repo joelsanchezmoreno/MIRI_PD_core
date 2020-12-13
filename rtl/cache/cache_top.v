@@ -50,14 +50,15 @@ assign thread_id = req_thread_id;
 logic [`THR_PER_CORE-1:0]                       req_valid_ff;
 dcache_request_t [`THR_PER_CORE-1:0]            req_info_ff;
 
+logic instr_xcpt;
 genvar u;
 generate for (u=0; u < `THR_PER_CORE; u++) 
 begin
     logic update_ff;
-    assign update_ff = req_valid & (thread_id == u);
+    assign update_ff = req_valid & !instr_xcpt & (thread_id == u);
 
-        //     CLK   RST                      EN        DOUT             DIN        DEF
-    `RST_EN_FF(clock, reset | flush_cache[u], update_ff, req_valid_ff[u], req_valid, 1'b0)
+        //     CLK   RST                                         EN        DOUT             DIN        DEF
+    `RST_EN_FF(clock, reset | flush_cache[u] | dcache_rsp_valid, update_ff, req_valid_ff[u], req_valid, 1'b0)
 
         // CLK    EN         DOUT            DIN
     `EN_FF(clock, update_ff, req_info_ff[u], req_info)
@@ -135,7 +136,6 @@ end
 // In case of LD request we will have to write that data on the RF.
 // In addition, we also check if the request is for an ALU R type 
 // instruction, which also writes on the RF.
-logic instr_xcpt;
 assign instr_xcpt =   req_info.xcpt_fetch.xcpt_itlb_miss
                     | req_info.xcpt_fetch.xcpt_bus_error
                     | req_info.xcpt_decode.xcpt_illegal_instr

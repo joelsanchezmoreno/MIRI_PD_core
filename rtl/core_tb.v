@@ -83,7 +83,6 @@ logic order_fifo_pendant_request_ff;
 
 // Response from MM to core arbiter
 logic rsp_mm_valid;
-logic rsp_mm_ready;
 logic rsp_mm_bus_error;
 logic [`ICACHE_LINE_WIDTH-1:0]  rsp_mm_data;
 
@@ -203,7 +202,7 @@ begin
     // If there is a pendent request from D$ or I$ and Main Memory is ready.
     // Then, send the request to Main Memory
     if ( (dcache_fifo_not_empty | icache_fifo_not_empty) 
-        & rsp_mm_ready )
+        & !req_mm_valid_ff)
     begin
         req_mm_valid = 1'b1;
 
@@ -255,7 +254,6 @@ logic [`LATENCY_MM_RSP_RANGE] mem_rsp_count;
 always_ff @(posedge clk_i) 
 begin
     rsp_mm_valid     <= 1'b0;
-    rsp_mm_ready     <= 1'b1;
     rsp_mm_bus_error <= 1'b0;
 
     if (reset_i)
@@ -285,14 +283,12 @@ begin
     end
     else if (req_mm_valid_ff)
     begin
-        rsp_mm_ready  <= 1'b0;
         mem_rsp_count <= mem_rsp_count + 1'b1;
 
         if (mem_rsp_count == `LATENCY_MM_RSP-1)
         begin
             // Send response to the core arbiter
             rsp_mm_valid  <= 1'b1;
-            rsp_mm_ready  <= 1'b1;
 
             if (req_mm_info_ff.addr >=  (`MAIN_MEMORY_DEPTH*`MAIN_MEMORY_LINE_SIZE) ) 
             begin

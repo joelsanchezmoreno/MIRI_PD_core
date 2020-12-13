@@ -135,7 +135,7 @@ assign decode_xcpt_valid =  req_alu_valid
 // request on the RoB to the data cache 
 //
 logic               req_wb_valid_next;
-assign alu_no_req_to_cache = req_wb_valid_next;
+assign alu_no_req_to_cache = req_wb_valid_next | !req_dcache_valid_next;
 
 logic               req_dcache_valid_next;
 logic               req_wb_mem_blocked_next;

@@ -136,9 +136,10 @@ begin
     logic thread_is_active;
     assign thread_is_active = (active_thread == thr_id);
 
-    assign program_counter[thr_id] = (  mt_mode  == Single_Threaded 
-                                      & stall_fetch_ff[thr_id]      ) ? program_counter_ff[thr_id] - 4  : 
-                                                                        program_counter_ff[thr_id];
+    assign program_counter[thr_id] = program_counter_ff[thr_id]; 
+    //assign program_counter[thr_id] = (  mt_mode  == Single_Threaded 
+    //                                  & stall_fetch_ff[thr_id]      ) ? program_counter_ff[thr_id] - 4  : 
+    //                                                                    program_counter_ff[thr_id];
 
         //     CLK    RST    EN                              DOUT                        DIN                           DEF
     `RST_EN_FF(clock, reset, program_counter_update[thr_id], program_counter_ff[thr_id], program_counter_next[thr_id], boot_addr)

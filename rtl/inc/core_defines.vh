@@ -246,7 +246,7 @@
 // Reorder buffer defines
 ///////////////////////
 
-`define ROB_NUM_ENTRIES         8
+`define ROB_NUM_ENTRIES         16
 `define ROB_NUM_ENTRIES_PER_THR `ROB_NUM_ENTRIES/`THR_PER_CORE
 
 `define ROB_NUM_ENTRIES_RANGE   `ROB_NUM_ENTRIES_PER_THR-1:0

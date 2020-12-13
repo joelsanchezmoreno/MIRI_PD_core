@@ -453,8 +453,11 @@ begin
                                end
                             end
                             // If we found that we're blocked by another thread,
-                            // then do nothing and go to bring line
-                            if (dcache_state[thread_id] == bring_line)
+                            // then do nothing and go to bring line.
+                            // Otherwise, check if we need to replace ways, or
+                            // if the store buffer has pendent requests or if
+                            // we need to bring the line
+                            if (dcache_state[thread_id] != bring_line)
                             begin
                                 // If there is a request on the store buffer that targets
                                 // the way we want to replace, we need to perform the ST
@@ -524,7 +527,7 @@ begin
                                         dcache_state[thread_id] = bring_line;
                                     end //!dCache_dirty_ff[req_target_pos[thread_id]]
                                 end // store_buffer_hit_way
-                            end // blocked by another thread
+                            end // !blocked by another thread
                         end //!rsp_error
                     end // !LD_hit
                 end // req_valid

@@ -296,8 +296,8 @@ begin
     `RST_FF(clock, reset | flush_rob[ii], reg_blocked_valid_ff[ii], (flush_decode_ff[ii]) ? reg_blocked_valid_next_2[ii] : reg_blocked_valid_next[ii], '0)
    
     
-        //     CLK    RST                    EN         DOUT                        DIN                           DEF
-    `RST_EN_FF(clock, reset | flush_rob[ii], update_en, reorder_buffer_tail_ff[ii], reorder_buffer_tail_next[ii], '0)
+        //     CLK    RST                    EN                DOUT                        DIN                           DEF
+    `RST_EN_FF(clock, reset | flush_rob[ii], thread_is_active, reorder_buffer_tail_ff[ii], reorder_buffer_tail_next[ii], '0)
 
         //  CLK    RST                    DOUT                        DIN                           DEF
     `RST_FF(clock, reset | flush_rob[ii], reg_blocked_valid_ff_2[ii], reg_blocked_valid_next_2[ii], '0)
@@ -404,7 +404,7 @@ begin
         end
     end          
    
-    if ((req_to_alu_valid | req_to_mul_valid) & !flush_decode[thread_id] & !stall_decode[thread_id])
+    if ((req_to_alu_valid | req_to_mul_valid) & !flush_decode[thread_id])
         reorder_buffer_tail_next[thread_id] = reorder_buffer_tail_ff[thread_id] + 1'b1;
 
     ////////////////////////////////////////
