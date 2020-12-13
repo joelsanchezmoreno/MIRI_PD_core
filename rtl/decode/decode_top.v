@@ -172,9 +172,6 @@ begin
     logic update_ff;
     assign update_ff = (pp == thread_id);
 
-    logic update_info;
-    assign update_info = (pp == thread_id);
-    
         //     CLK    RST                       EN          DOUT                     DIN                    DEF
     `RST_EN_FF(clock, reset | flush_decode[pp], update_ff, req_to_alu_valid_ff[pp], req_to_alu_valid_next, '0)
 
@@ -185,19 +182,19 @@ begin
         //     CLK    RST                       EN                DOUT               DIN                                      DEF
     `RST_EN_FF(clock, reset | flush_decode[pp], saved_request_en, saved_request[pp], (fetch_instr_valid && stall_decode[pp]), '0)
     
-        // CLK    EN         DOUT                  DIN            
-    `EN_FF(clock, update_ff, req_to_alu_pc_ff[pp], fetch_instr_pc)
+        // CLK    EN                             DOUT                  DIN            
+    `EN_FF(clock, update_ff & fetch_instr_valid, req_to_alu_pc_ff[pp], fetch_instr_pc)
    
     // INFO must be updated at all cycles given that RF could have been
     // written while other thread was active and we were stalled. So we need
     // to ensure that not only RoB is updated but also that ra_data and
     // rb_data are properly updated 
-        // CLK    EN           DOUT                    DIN                 
-    `EN_FF(clock, update_info, req_to_alu_info_ff[pp], req_to_alu_info_next)
+        // CLK    EN                             DOUT                    DIN                 
+    `EN_FF(clock, update_ff & fetch_instr_valid, req_to_alu_info_ff[pp], req_to_alu_info_next)
 
-        // CLK    EN         DOUT                 DIN            
-    `EN_FF(clock, update_ff, mul_instr_ff,        mul_instr)
-    `EN_FF(clock, update_ff, fetch_instr_data_ff, fetch_instr_data[`INSTR_OFFSET_LO_ADDR_RANGE])
+        // CLK    EN                             DOUT                 DIN            
+    `EN_FF(clock, update_ff & fetch_instr_valid, mul_instr_ff,        mul_instr)
+    `EN_FF(clock, update_ff & fetch_instr_valid, fetch_instr_data_ff, fetch_instr_data[`INSTR_OFFSET_LO_ADDR_RANGE])
 end
 endgenerate
 
