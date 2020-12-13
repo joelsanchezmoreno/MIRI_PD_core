@@ -176,9 +176,9 @@ begin
     logic update_rob;
     assign update_rob = (pp == thread_id);
 
-        //      CLK   RST                    EN          DOUT                   DIN                       DEF
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
+        //      CLK   RST                    EN                            DOUT                   DIN                       DEF
+    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob & rob_blocks_src1, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
+    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob & rob_blocks_src2, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
     
     //     CLK    EN          DOUT                DIN
     `EN_FF(clock, update_rob, rob_src1_id_ff[pp], rob_src1_id)
@@ -191,7 +191,6 @@ end
 endgenerate
 
 integer ll;
-
 always_comb
 begin
     rob_thread_id = thread_id;
@@ -201,16 +200,21 @@ begin
         rob_src1_id = req_mul_info.ticket_src1;
         rob_src2_id = req_mul_info.ticket_src2;
 
-        rob_blocks_src1     = req_mul_info.rob_blocks_src1;
-        rob_blocks_src2     = req_mul_info.rob_blocks_src2;
+        rob_blocks_src1 = req_mul_info.rob_blocks_src1;
+        rob_blocks_src2 = req_mul_info.rob_blocks_src2;
+    end
+    else if (stall_decode_ff[thread_id]) //TODO: Should be pendent request not stall_decode_ff in case of multithreading
+    begin
+        rob_src1_id = rob_src1_id_ff[thread_id];
+        rob_src2_id = rob_src2_id_ff[thread_id];
+
+        rob_blocks_src1 = req_mul_info_ff[thread_id].rob_blocks_src1;
+        rob_blocks_src2 = req_mul_info_ff[thread_id].rob_blocks_src2;
     end
     else
     begin
-        rob_src1_id = req_mul_info_ff[thread_id].ticket_src1;
-        rob_src2_id = req_mul_info_ff[thread_id].ticket_src2;
-
-        rob_blocks_src1     = req_mul_info_ff[thread_id].rob_blocks_src1;
-        rob_blocks_src2     = req_mul_info_ff[thread_id].rob_blocks_src2;
+        rob_blocks_src1 = '0;
+        rob_blocks_src2 = '0;
     end
 
     rob_src1_found_next = rob_src1_found_ff;
@@ -224,10 +228,14 @@ begin
         // Check if there is a hit on this cycle and store the hit, only if we
         // did not hit last cycle
         if (!rob_src1_found_ff[thread_id])
-            rob_src1_found_next[thread_id] = rob_src1_hit;
+            rob_src1_found_next[thread_id] =  rob_src1_hit //hit on RoB
+                                            | (   writeEnRF && write_thread_idRF == thread_id 
+                                               && write_rob_idRF == rob_src1_id);//hit on RF write
 
         if (!rob_src2_found_ff[thread_id])
-            rob_src2_found_next[thread_id] = rob_src2_hit;
+            rob_src2_found_next[thread_id] = rob_src2_hit //hit on RoB
+                                            |(   writeEnRF && write_thread_idRF == thread_id 
+                                               && write_rob_idRF == rob_src2_id);//hit on RF write
 
         // Check if we can unblock decode stage
         if (rob_blocks_src1 & rob_blocks_src2)
@@ -248,69 +256,80 @@ begin
     // if !stall_decode
     else 
     begin
-        rob_src1_found_next[thread_id] = rob_src1_hit;
-        rob_src2_found_next[thread_id] = rob_src2_hit;
+        rob_src1_found_next[thread_id] =  rob_src1_hit //hit on RoB
+                                        | (   writeEnRF && write_thread_idRF == thread_id 
+                                           && write_rob_idRF == rob_src1_id); //hit on RF write
 
-        stall_decode[thread_id] =  (  fetch_xcpt_valid_in
-                                    | decode_xcpt_valid_in ) ? 1'b0 : 
-                                   ( req_mul_valid      ) ?   ( rob_blocks_src1 
-                                                               & !rob_src1_hit  
-                                                               & (req_mul_info.ticket_src1 != req_mul_instr_id))
-                                                            | ( rob_blocks_src2 
-                                                               & !rob_src2_hit  
-                                                               & (req_mul_info.ticket_src2 != req_mul_instr_id)) :
+        rob_src2_found_next[thread_id] =  rob_src2_hit //hit on RoB
+                                        | (   writeEnRF && write_thread_idRF == thread_id 
+                                           && write_rob_idRF == rob_src2_id); //hit on RF write
+
+        stall_decode[thread_id] =  (  fetch_xcpt_valid_in | decode_xcpt_valid_in ) ? 1'b0 : 
+                                   ( req_mul_valid ) ?  ( rob_blocks_src1 
+                                                         & !rob_src1_found_next[thread_id]  
+                                                         & (req_mul_info.ticket_src1 != req_mul_instr_id))
+                                                      | ( rob_blocks_src2 
+                                                         & !rob_src2_found_next[thread_id]  
+                                                         & (req_mul_info.ticket_src2 != req_mul_instr_id)) :
                                    ( req_mul_valid_ff[thread_id]) ?  ( rob_blocks_src1 
-                                                               & !rob_src1_hit  
-                                                               & (req_mul_info_ff[thread_id].ticket_src1 != req_mul_instr_id_ff[thread_id]))
-                                                            | ( rob_blocks_src2 
-                                                               & !rob_src2_hit  
-                                                               & (req_mul_info_ff[thread_id].ticket_src2 != req_mul_instr_id_ff[thread_id])) :
-                                                            1'b0;
+                                                                      & !rob_src1_found_ff[thread_id] 
+                                                                      & (req_mul_info_ff[thread_id].ticket_src1 != req_mul_instr_id_ff[thread_id]))
+                                                                   | ( rob_blocks_src2 
+                                                                      & !rob_src2_found_ff[thread_id] 
+                                                                      & (req_mul_info_ff[thread_id].ticket_src2 != req_mul_instr_id_ff[thread_id])) :
+                                                                   1'b0;
     end
     
     // Logic to intercept RF writes and update rob FF of non-active threads if
     // needed
     update_rob_data1 = '0;
-    update_rob_data1 = '0;
-    if (writeEnRF)
+    update_rob_data2 = '0;
+    for (ll = 0; ll < `THR_PER_CORE; ll++)
     begin
-        for (ll = 0; ll < `THR_PER_CORE; ll++)
-        begin
-            update_rob_data1[ll] = rob_src1_hit & (thread_id == ll);
-            update_rob_data2[ll] = rob_src2_hit & (thread_id == ll);
+            // Check if we hit on the RoB
+        update_rob_data1[ll] = rob_blocks_src1 & rob_src1_hit & (thread_id == ll);
+        update_rob_data2[ll] = rob_blocks_src2 & rob_src2_hit & (thread_id == ll);
 
-            // Check if there the thread RF being written is waiting for a value
-            if(write_thread_idRF == ll)
+        // Check if there the thread RF being written is waiting for a value
+        if(writeEnRF && write_thread_idRF == ll)
+        begin
+            // Check if the register being written is the one the thr was
+            // waiting for
+            if(write_rob_idRF == rob_src1_id_ff[ll]) //check src1
             begin
-                // Check if the register being written is the one the thr was
-                // waiting for
-                if(write_rob_idRF == rob_src1_id_ff[ll]) //check src1
-                begin
-                    rob_src1_found_next[ll] = 1'b1;
-                    update_rob_data1[ll]    = 1'b1;
-                end
-                if(write_rob_idRF == rob_src2_id_ff[ll]) //check src2
-                begin
-                    rob_src2_found_next[ll] = 1'b1;
-                    update_rob_data2[ll]    = 1'b1;
-                end
-            end // threadID matches
-        end // for loop
-    end //writeEnRF
+                rob_src1_found_next[ll] = 1'b1;
+                update_rob_data1[ll]    = 1'b1;
+            end
+            if(write_rob_idRF == rob_src2_id_ff[ll]) //check src2
+            begin
+                rob_src2_found_next[ll] = 1'b1;
+                update_rob_data2[ll]    = 1'b1;
+            end
+        end // threadID matches
+    end // for loop
 end
 
-
+logic intercept_rf_write_src1;
+logic intercept_rf_write_src2;
 always_comb
 begin
 
-    ra_data = (rob_blocks_src1) ? (rob_src1_hit    )? rob_src1_data               : 
-                                                      rob_src1_data_ff[thread_id] :
+    intercept_rf_write_src1 = (   writeEnRF && write_thread_idRF == thread_id 
+                               && write_rob_idRF == rob_src1_id);
+
+    intercept_rf_write_src2 = (   writeEnRF && write_thread_idRF == thread_id 
+                               && write_rob_idRF == rob_src2_id);
+                               
+    ra_data = (rob_blocks_src1) ? (rob_src1_hit           ) ? rob_src1_data               : 
+                                  (intercept_rf_write_src1) ? writeValRF : // data from RF write   
+                                                              rob_src1_data_ff[thread_id] :
                                   (req_mul_valid   )? req_mul_info.ra_data        :
                                                       req_mul_info_ff[thread_id].ra_data;
                                                     
 
-    rb_data = (rob_blocks_src2) ?  (rob_src2_hit    )?  rob_src2_data               : 
-                                                        rob_src2_data_ff[thread_id] :
+    rb_data = (rob_blocks_src2) ?  (rob_src2_hit           ) ? rob_src2_data               : 
+                                   (intercept_rf_write_src2) ? writeValRF : // data from RF write   
+                                                               rob_src2_data_ff[thread_id] :
                                    (req_mul_valid   )?  req_mul_info.rb_data        :
                                                         req_mul_info_ff[thread_id].rb_data;
  
@@ -320,7 +339,9 @@ begin
     instr_id_next[thread_id][0]        = (req_mul_valid) ? req_mul_instr_id : req_mul_instr_id_ff[thread_id];
     instr_valid_next[thread_id][0]     = ( flush_mul[thread_id]       ) ? 1'b0 :
                                          ( stall_decode[thread_id]    ) ? 1'b0 :
-                                                                          req_mul_valid | req_mul_valid_ff[thread_id];
+                                         ( req_mul_valid              ) ? 1'b1 :
+                                         ( stall_decode_ff[thread_id] ) ? req_mul_valid_ff[thread_id] :
+                                                                          1'b0;
 
     req_wb_pc_next[thread_id][0]       = (req_mul_valid) ? req_mul_pc : req_mul_pc_ff[thread_id];
     mul_overflow_data       =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) * `ZX(`ALU_OVW_DATA_WIDTH,rb_data);
@@ -432,12 +453,12 @@ begin
     assign decode_xcpt_valid = mul_xcpt_decode_ff[mul_stage_thread_id][`MUL_STAGES].xcpt_illegal_instr;
     assign mul_xcpt_valid    = mul_xcpt_stages_ff[mul_stage_thread_id][`MUL_STAGES].xcpt_overflow;
 
-    req_wb_valid_next = (flush_mul[mul_stage_thread_id]   ) ? 1'b0 :
-                        (stall_decode[mul_stage_thread_id]) ? 1'b0 :
+    req_wb_valid_next = (flush_mul[mul_stage_thread_id]                  ) ? 1'b0 :
                         (  fetch_xcpt_valid
                          | decode_xcpt_valid   
-                         | mul_xcpt_valid                 ) ? 1'b1 : 
-                                                              instr_valid_ff[`MUL_STAGES];
+                         | mul_xcpt_valid                                ) ? 1'b1 : 
+                        (instr_valid_ff[mul_stage_thread_id][`MUL_STAGES]) ? 1'b1 :
+                                                                             1'b0 ;
   
     req_wb_info_next.instr_id    = instr_id_ff[mul_stage_thread_id][`MUL_STAGES];
     req_wb_info_next.pc          = req_wb_pc_ff[mul_stage_thread_id][`MUL_STAGES];

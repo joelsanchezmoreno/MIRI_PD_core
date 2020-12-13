@@ -164,8 +164,9 @@ assign wb_mem_blocked_type =   is_m_type_instr(req_alu_info.opcode)
 assign req_wb_mem_blocked_next = (flush_alu[thread_id]       ) ? 1'b0 :
                                  (stall_decode[thread_id]    ) ? 1'b0 : 
                                  (req_alu_valid              ) ? wb_mem_blocked_type :
-                                                                 (  req_alu_valid_ff[thread_id] 
-                                                                  & wb_mem_blocked_type_ff[thread_id]);
+                                 (stall_decode_ff[thread_id] ) ? (  req_alu_valid_ff[thread_id] 
+                                                                  & wb_mem_blocked_type_ff[thread_id]):
+                                                                 1'b0;
 
 assign req_wb_mem_blocked       = req_wb_mem_blocked_ff[previous_thread];
 assign req_wb_dcache_info       = req_dcache_info_ff;
@@ -184,6 +185,7 @@ assign req_dcache_valid_next = ( flush_alu[thread_id]       ) ? 1'b0 :
                                 | decode_xcpt_valid 
                                 | xcpt_alu.xcpt_overflow    ) ? 1'b0 : // in case of xcpt go to wb 
                                ( stall_decode[thread_id]    ) ? 1'b0 : 
+                               ( stall_decode_ff[thread_id] ) ? is_m_type_instr(req_alu_info_ff[thread_id].opcode) : 
                                ( req_alu_valid              ) ? dcache_mem_type :
                                ( req_alu_valid_ff[thread_id]) ? dcache_mem_type_ff[thread_id] : 1'b0;
 
@@ -195,7 +197,7 @@ genvar ii;
 generate for (ii=0; ii < `THR_PER_CORE; ii++) 
 begin
     logic update_ff;
-    assign update_ff = req_alu_valid & (ii == thread_id); 
+    assign update_ff = (ii == thread_id); 
 
         //     CLK    RST                    EN         DOUT                       DIN                      DEF
     `RST_EN_FF(clock, reset | flush_alu[ii], update_ff, req_wb_mem_blocked_ff[ii], req_wb_mem_blocked_next, '0)
