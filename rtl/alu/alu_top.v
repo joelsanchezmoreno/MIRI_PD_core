@@ -218,6 +218,7 @@ logic [`THR_PER_CORE-1:0]  alu_to_wb_intr_ff;
 
 assign alu_to_wb_intr = (  is_r_type_instr(req_alu_info.opcode) 
                          | is_mov_instr(req_alu_info.opcode) 
+                         | is_nop_instr(req_alu_info.opcode) 
                          | is_branch_type_instr(req_alu_info.opcode) 
                          | is_jump_instr(req_alu_info.opcode) 
                          | is_iret_instr(req_alu_info.opcode) 
@@ -429,7 +430,7 @@ begin
         update_rob_data2[ll] = rob_blocks_src2 & rob_src2_hit & (thread_id == ll);
 
             // Check if the thread RF being written is waiting for a value
-        if(writeEnRF && write_thread_idRF == ll)
+        if(writeEnRF && write_thread_idRF == ll && stall_decode_ff[ll])
         begin
             // Check if the register being written is the one the thr was
             // waiting for

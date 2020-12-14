@@ -107,6 +107,8 @@ logic [`THR_PER_CORE-1:0] flush_pipeline_next;
 logic [`THR_PER_CORE-1:0] flush_pipeline_ff;
 logic [`THR_PER_CORE-1:0] flush_cache_next;
 logic [`THR_PER_CORE-1:0] flush_cache_ff;
+logic 				                xcpt_valid_next;
+logic [`THR_PER_CORE_WIDTH-1:0]     xcpt_thread_id_next;
 
     //  CLK    RST    DOUT               DIN                  DEF
 `RST_FF(clock, reset, flush_pipeline_ff, flush_pipeline_next, '0)
@@ -126,8 +128,11 @@ begin
     flush_pipeline_next = flush_pipeline_ff;
     
         // If we retire instr with xcpt, we will de-assert flush
-    if (xcpt_valid_next)
-        flush_pipeline_next[xcpt_thread_id_next] = 1'b0;
+    if ( xcpt_valid_next | xcpt_valid)
+        if (xcpt_valid_next) // if the instr was on the RoB waiting to be retired
+            flush_pipeline_next[xcpt_thread_id_next] = 1'b0;
+        else // if the instr. was the oldest and had an xcpt, clean next cycle
+            flush_pipeline_next[xcpt_thread_id] = 1'b0;
 
         // Update flush pipeline based on the request being retired
     if (alu_req_valid & alu_reorder_buffer_xcpt_info.valid)
@@ -154,11 +159,9 @@ logic [`ROB_ID_RANGE]               req_to_RF_instr_id_next;
 logic [`THR_PER_CORE_WIDTH-1:0]     req_to_RF_thread_id_next;
 
     // Exceptions values to be stored on the RF
-logic 				                xcpt_valid_next;
 xcpt_type_t                         xcpt_type_next;
 logic [`PC_WIDTH_RANGE] 		    xcpt_pc_next;
 logic [`REG_FILE_XCPT_ADDR_RANGE] 	xcpt_addr_next;
-logic [`THR_PER_CORE_WIDTH-1:0]     xcpt_thread_id_next;
 
     // Request from WB to TLB
 logic                               new_tlb_entry_next;
@@ -166,7 +169,7 @@ logic                               new_tlb_id_next;
 tlb_req_info_t                      new_tlb_info_next;
 logic [`THR_PER_CORE_WIDTH-1:0]     new_tlb_thread_id_next;
 
-//      CLK    RST    DOUT                      DIN                      DEF
+//      CLK    RST    DOUT                 DIN                      DEF
 `RST_FF(clock, reset, req_to_dcache_valid, req_to_dcache_valid_next, '0)
 `RST_FF(clock, reset, req_to_RF_writeEn,   req_to_RF_writeEn_next, '0)
 `RST_FF(clock, reset, xcpt_valid,          xcpt_valid_next,        '0)

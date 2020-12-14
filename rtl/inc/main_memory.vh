@@ -2,7 +2,7 @@
 `define __MAIN_MEMORY__
 
 // Main memory
-`define MAIN_MEMORY_DEPTH       13288 // 1000 + 3 matrix = 1000 + 3*4096
+`define MAIN_MEMORY_DEPTH       1024 //13288 // 1000 + 3 matrix = 1000 + 3*4096
 `define MAIN_MEMORY_LINE_WIDTH  128
 `define MAIN_MEMORY_LINE_SIZE  (`MAIN_MEMORY_LINE_WIDTH/8)
 

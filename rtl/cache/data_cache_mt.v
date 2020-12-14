@@ -428,7 +428,8 @@ begin
                             end
                             else // If store
                             begin
-                                if(dCache_reserved_way_ff[req_target_pos[thread_id]] != thread_id)
+                                if(  !dCache_reserved_valid_ff[req_target_pos[thread_id]]
+                                   | dCache_reserved_way_ff[req_target_pos[thread_id]] != thread_id)
                                 begin
                                     rsp_valid = 1'b1;
                                     rsp_error = 1'b1;

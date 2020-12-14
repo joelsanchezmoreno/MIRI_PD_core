@@ -219,7 +219,7 @@ Test name: xcpt_mul_overflow.hex
 2000:   ADDI R30,R30,0x7DA1     5
     
 What does this check: 
-    - We have written memory address position 0x200 with an ADDI instruction.
+    - We have written memory address position 0x2000 with an ADDI instruction.
     - The MUL will raise an overflow exception. Then, a branch to adress 0x2000 will be taken.
  
 - If evertyhing goes as expected we should see the next values on the registers:
@@ -245,14 +245,14 @@ Test name: xcpt_add_overflow.hex
 2000:   ADDI R30,R30,0x7DA1     5
     
 What does this check: 
-    - We have written memory address position 0x200 with an ADDI instruction. 
+    - We have written memory address position 0x2000 with an ADDI instruction. 
     - The third ADD will raise an overflow exception. Then, a branch to adress 0x2000 will be taken.
  
 - If evertyhing goes as expected we should see the next values on the registers:
         - R0 = 0xFFFC0004
         - R30 = 0x7DA1
 
-Result: Working as expected                  
+Result:                   
 
 ///////////////////////////////////////////////////////////////////////////
 // EXCEPTIONS ADDI OVERFLOW
@@ -267,7 +267,7 @@ Test name: xcpt_addi_overflow.hex
 2000:   ADDI R30,R30,0x7DA1     2
     
 What does this check: 
-    - We have written memory address position 0x200 with an ADDI instruction.
+    - We have written memory address position 0x2000 with an ADDI instruction.
     - The ADDI will raise an overflow exception. Then, a branch to adress 0x2000 will be taken.
  
 - If evertyhing goes as expected we should see the next values on the registers:
@@ -291,12 +291,65 @@ Test name: xcpt_cache_bus_error.hex
 2000:   ADDI R30,R30,0x7DA1     3
   
 What does this check: 
-    - We have written memory address position 0x200 with an ADDI instruction
+    - We have written memory address position 0x2000 with an ADDI instruction
     - The second LD will raise a bus error exception. Then, a branch to adress 0x2000 will be taken.
  
 - If evertyhing goes as expected we should see the next values on the registers:
         - R0 = 0xFFFFFFFF
         - R30 = 0x7DA1
+
+Result: Working as expected                  
+
+///////////////////////////////////////////////////////////////////////////
+// EXCEPTIONS STORE CONDITIONAL WITHOUT LOAD CONDITIONAL (TEST LOADS AND STORES)
+
+Test name: xcpt_illegal_instruction.hex
+
+# mem[0x1008+0x30] -- initial value 0xCBAE05FA
+# mem[0x2000] -- initial value 0x07EF7DA1
+
+1000:   ADDI R0,R0,0x7          0
+1004:   ADDI R1,R1,0x3          1
+1008:   ADD  R2,R0,R1           2
+100C:   ADDI R3,R3,0x1008       3
+
+1010:   LDW  R5,0x30(R3)        4   # R5 = 0xCBAE05FA
+1014:   STW  0x30(R3),R2        5   # mem[0x1008+0x30] = 0x0000 0000A
+1018:   LDW  R4,0x30(R3)        6   # R4 = mem[0x1008+0x30]
+101C:   ADD  R5,R5,R4           7   # R5 = R5 + R4 =  0xCBAE05FA + 0xA = 0xCBAE0604  
+
+1020:   STB  0x32(R3),R1        0   # mem[0x1008+0x30] = 0x0003 000A
+1024:   STB  0x31(R3),R0        1   # mem[0x1008+0x30] = 0x0003 070A
+1028:   STW  0x4C(R3),R2        2   # mem[0x1008+0x4C] = 0x0000 000A
+102C:   STW  0x68(R3),R3        3   # mem[0x1008+0x68] = 0x0000 1008
+
+1030:   STCB                    4
+1034:   NOP                     5
+1038:   - illegal instruction-  6
+
+2000:   ADDI R30,R30,0x7DA1     0
+
+What does this check: 
+    - Initialize memory (0x1038) to 0xCBAE05FA 
+    - This test is the same as the one above for LD and ST, but here we have written 
+      memory address position 0x2000 with an ADDI instruction for R30.
+    - An cache bus error will raise after STCB arrives to the cache since the position
+      as not locked by a previous LDC. This will cause the WB stage to force fetch to 
+      take a branch to exception handler at PC 0x2000.
+
+- If evertyhing goes as expected we should see the next values on the registers:
+        - R0 = 0x7
+        - R1 = 0x3
+        - R2 = 0xA
+        - R3 = 0x1008
+        - R4 = 0xA
+        - R5 = 0xCBAE0604
+        - R30 = 0x7DA1
+        - mm[0x1080] = compute
+        - mm[0x1084] = 0xEDA
+        - mm[0x1038] = 0x0003070A
+        - mm[0x1054] = 0x0000000A
+        - mm[0x1070] = 0x00001008
 
 Result: Working as expected                  
 
@@ -362,7 +415,7 @@ Test name: xcpt_handler_tlb.hex
 
 #########
 What does this check: 
-    - The src code will produce an overflow exception when to shifth R0.
+    - The src code will produce an overflow exception when shifting R0.
     - This will force the core to jump to the exception handler at address 0x2000
         - Then, this will save the values for R28,R29,R30.
         - Next, it will NOT hit on iTLB so it will jump to 0x204C.

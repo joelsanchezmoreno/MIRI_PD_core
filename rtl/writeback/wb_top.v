@@ -99,7 +99,7 @@ reorder_buffer
     .reorder_buffer_oldest  ( reorder_buffer_oldest ),
 
     // Request to invalidate the buffer
-    .invalidate_buffer      ( '0                    ), //FIXME: Not needed with the current implementation
+    .invalidate_buffer      ( invalidate_buffer     ),
     
     // Request from ALU
     .alu_req_valid          ( alu_req_valid         ),
