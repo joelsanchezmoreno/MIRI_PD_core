@@ -510,7 +510,7 @@ begin
 	begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) + `ZX(`ALU_OVW_DATA_WIDTH,rb_data);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow = !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
+        xcpt_alu.xcpt_overflow = !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
     end
     // SUB
 	else if (opcode == `INSTR_SUB_OPCODE)
@@ -522,21 +522,21 @@ begin
     begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) + `ZX(`ALU_OVW_DATA_WIDTH,offset);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
+        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
     end
     //SLL
     else if (opcode == `INSTR_SLL_OPCODE)
     begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) << `ZX(`ALU_OVW_DATA_WIDTH,offset);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
+        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
     end
     //SRL
     else if (opcode == `INSTR_SRL_OPCODE)
     begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) >> `ZX(`ALU_OVW_DATA_WIDTH,offset);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
+        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
     end
     // MEM
 	else if (is_m_type_instr(opcode)) 
@@ -578,7 +578,7 @@ begin
         // Check possible overflow
         req_dcache_info_next.addr   =  oper_data[`REG_FILE_DATA_RANGE];
         req_dcache_info_next.data   =  oper_data_2[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow      =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid) ? 
+        xcpt_alu.xcpt_overflow      =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid) ? 
                                                             (  (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0)
                                                              | (oper_data_2[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0)) : 1'b0;
     end	
@@ -588,7 +588,8 @@ begin
         if (ra_data == rb_data)
         begin
             branch_pc_next   = `ZX(`PC_WIDTH,offset);
-		    take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+		    //take_branch_next =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid);
+            take_branch_next =  !stall_decode[thread_id] & (req_alu_valid | (req_alu_valid_ff[thread_id] & stall_decode_ff[thread_id]));
         end
 	end
     // BNE
@@ -597,7 +598,7 @@ begin
         if (ra_data != rb_data)
         begin
             branch_pc_next   = `ZX(`PC_WIDTH,offset);
-		    take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+            take_branch_next =  !stall_decode[thread_id] & (req_alu_valid | (req_alu_valid_ff[thread_id] & stall_decode_ff[thread_id]));
         end
 	end
     // BLT
@@ -606,7 +607,7 @@ begin
         if (ra_data < rb_data)
         begin
             branch_pc_next   = `ZX(`PC_WIDTH,offset);
-		    take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+            take_branch_next =  !stall_decode[thread_id] & (req_alu_valid | (req_alu_valid_ff[thread_id] & stall_decode_ff[thread_id]));
         end
 	end
     // BGT
@@ -615,7 +616,7 @@ begin
         if (ra_data > rb_data)
         begin
             branch_pc_next   = `ZX(`PC_WIDTH,offset);
-		    take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+            take_branch_next =  !stall_decode[thread_id] & (req_alu_valid | (req_alu_valid_ff[thread_id] & stall_decode_ff[thread_id]));
         end
 	end
     // BLE
@@ -624,7 +625,7 @@ begin
         if (ra_data <= rb_data)
         begin
             branch_pc_next   = `ZX(`PC_WIDTH,offset);
-		    take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+            take_branch_next =  !stall_decode[thread_id] & (req_alu_valid | (req_alu_valid_ff[thread_id] & stall_decode_ff[thread_id]));
         end
 	end
     // BGE
@@ -633,25 +634,25 @@ begin
         if (ra_data >= rb_data)
         begin
             branch_pc_next   = `ZX(`PC_WIDTH,offset);
-		    take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+            take_branch_next =  !stall_decode[thread_id] & (req_alu_valid | (req_alu_valid_ff[thread_id] & stall_decode_ff[thread_id]));
         end
 	end
     // JUMP
     else if (opcode == `INSTR_JUMP_OPCODE) 
 	begin
 		branch_pc_next   = `ZX(`PC_WIDTH,offset);
-		take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+        take_branch_next =  !stall_decode[thread_id] & (req_alu_valid | (req_alu_valid_ff[thread_id] & stall_decode_ff[thread_id]));
 	end
 
     // MOV
     else if (is_mov_instr(opcode)) 
     begin
-        rf_data = (!stall_decode & req_alu_valid) ? req_alu_info.ra_data : req_alu_info_ff[thread_id].ra_data;          
+        rf_data = (!stall_decode[thread_id] & req_alu_valid) ? req_alu_info.ra_data : req_alu_info_ff[thread_id].ra_data;          
     end
     // TLBWRITE
 	else if (is_tlb_instr(opcode)) 
     begin
-        tlb_req_valid_next           = !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+        tlb_req_valid_next           = !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid);
         tlb_id_next                  = offset[0];
         tlb_req_info_next.virt_addr  = ra_data;
         tlb_req_info_next.phy_addr   = rb_data;
@@ -660,10 +661,10 @@ begin
     // IRET
 	else if (is_iret_instr(opcode)) 
     begin
-        ra_data = (!stall_decode & req_alu_valid) ? req_alu_info.ra_data : req_alu_info_ff[thread_id].ra_data;
+        ra_data = (!stall_decode[thread_id] & req_alu_valid) ? req_alu_info.ra_data : req_alu_info_ff[thread_id].ra_data;
         branch_pc_next   = `ZX(`PC_WIDTH,ra_data);
-		take_branch_next =  !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
-        iret_instr_next[thread_id] = !stall_decode & (req_alu_valid_ff[thread_id] | req_alu_valid);
+		take_branch_next =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid);
+        iret_instr_next[thread_id] = !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid);
     end
     req_dcache_info_next.xcpt_alu    = '0;
 

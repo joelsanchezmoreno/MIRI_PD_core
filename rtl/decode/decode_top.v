@@ -155,9 +155,10 @@ logic [`THR_PER_CORE-1:0] saved_request_alu;
 assign req_to_alu_valid_next =  ( flush_decode[thread_id]       ) ? 1'b0       : // Invalidate instruction
                                 ( stall_decode[thread_id]       ) ? 1'b0       :
                                 ( fetch_instr_valid             ) ? !mul_instr : // New instruction from fetch and not MUL
-                                (  xcpt_fetch_in.xcpt_itlb_miss
-                                 | xcpt_fetch_in.xcpt_bus_error
-                                 | decode_xcpt_next.xcpt_illegal_instr) ? 1'b1: // There has been an xcpt
+                                ( fetch_instr_valid
+                                 &(  xcpt_fetch_in.xcpt_itlb_miss
+                                   | xcpt_fetch_in.xcpt_bus_error
+                                   | decode_xcpt_next.xcpt_illegal_instr)) ? 1'b1: // There has been an xcpt
                                 ( saved_request_alu[thread_id]        ) ? !mul_instr_ff[thread_id] : // There is a pendent instr 
                                                                            1'b0;
 
@@ -479,7 +480,7 @@ begin
 
     // Register B value depends on the instructions being performed at the
     // mul, alu and cache stage at this cycle, because we may need to bypass data
-    if (is_store_instr(opcode) & reg_blocked_valid_ff[rd_addr])
+    if (is_store_instr(opcode) & reg_blocked_valid_ff[thread_id][rd_addr])
     begin
         rb_data = (  writeEnRF
                    & (destRF == rd_addr) 

@@ -434,7 +434,7 @@ What does this check:
       to the WB stage where it forces the core to jump to the exception handler again at address 0x2000.
       The privilege mode is then changed to Supervisor.
         - Then, this will save the values for R28,R29,R30.
-        - Next, it will HIT on iTLB xcpt check, so it will continue without jumping to 0x2800:
+        - Next, it will HIT on iTLB xcpt check, so it will continue without jumping to 0x204C:
             - Saves on the main memory the value for registers R5 and R6, because we will use them to compute
               the physical address.
             - Reads the @ fault value from rm1 and copies it to R5. Then, it computes de physical address and
