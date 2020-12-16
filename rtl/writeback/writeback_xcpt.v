@@ -44,11 +44,13 @@ begin
     end
     else if (  alu_req_info.xcpt_cache.xcpt_addr_fault 
              | alu_req_info.xcpt_cache.xcpt_dtlb_miss
+             | alu_req_info.xcpt_cache.xcpt_store_cond
              | alu_req_info.xcpt_cache.xcpt_bus_error)
     begin
         alu_rob_xcpt_info.valid      = 1'b1;
         alu_rob_xcpt_info.xcpt_type  = ( alu_req_info.xcpt_cache.xcpt_addr_fault ) ? cache_addr_fault :
                                        ( alu_req_info.xcpt_cache.xcpt_dtlb_miss  ) ? dTlb_miss        :
+                                       ( alu_req_info.xcpt_cache.xcpt_store_cond ) ? cache_store_cond :
                                                                                      cache_bus_error; 
         alu_rob_xcpt_info.addr_val   = alu_req_info.xcpt_cache.xcpt_addr_val; 
         alu_rob_xcpt_info.pc         = alu_req_info.xcpt_cache.xcpt_pc;
@@ -88,11 +90,13 @@ begin
     end
     else if (  mul_req_info.xcpt_cache.xcpt_addr_fault 
              | mul_req_info.xcpt_cache.xcpt_dtlb_miss
+             | mul_req_info.xcpt_cache.xcpt_store_cond
              | mul_req_info.xcpt_cache.xcpt_bus_error)
     begin
         mul_rob_xcpt_info.valid      = 1'b1;
         mul_rob_xcpt_info.xcpt_type  = ( mul_req_info.xcpt_cache.xcpt_addr_fault ) ? cache_addr_fault :
                                        ( mul_req_info.xcpt_cache.xcpt_dtlb_miss  ) ? dTlb_miss        :
+                                       ( mul_req_info.xcpt_cache.xcpt_store_cond ) ? cache_store_cond :
                                                                                      cache_bus_error; 
         mul_rob_xcpt_info.addr_val   = mul_req_info.xcpt_cache.xcpt_addr_val; 
         mul_rob_xcpt_info.pc         = mul_req_info.xcpt_cache.xcpt_pc;
@@ -132,11 +136,13 @@ begin
     end
     else if (  cache_req_info.xcpt_cache.xcpt_addr_fault 
              | cache_req_info.xcpt_cache.xcpt_dtlb_miss
+             | cache_req_info.xcpt_cache.xcpt_store_cond
              | cache_req_info.xcpt_cache.xcpt_bus_error)
     begin
         cache_rob_xcpt_info.valid      = 1'b1;
         cache_rob_xcpt_info.xcpt_type  = ( cache_req_info.xcpt_cache.xcpt_addr_fault ) ? cache_addr_fault :
                                          ( cache_req_info.xcpt_cache.xcpt_dtlb_miss  ) ? dTlb_miss        :
+                                         ( cache_req_info.xcpt_cache.xcpt_store_cond ) ? cache_store_cond :
                                                                                          cache_bus_error; 
         cache_rob_xcpt_info.addr_val   = cache_req_info.xcpt_cache.xcpt_addr_val; 
         cache_rob_xcpt_info.pc         = cache_req_info.xcpt_cache.xcpt_pc;

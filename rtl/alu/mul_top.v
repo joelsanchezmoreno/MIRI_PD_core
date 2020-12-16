@@ -460,6 +460,7 @@ begin
                         (instr_valid_ff[mul_stage_thread_id][`MUL_STAGES]) ? 1'b1 :
                                                                              1'b0 ;
   
+    req_wb_info_next.chg_core_mode = 1'b0;
     req_wb_info_next.instr_id    = instr_id_ff[mul_stage_thread_id][`MUL_STAGES];
     req_wb_info_next.pc          = req_wb_pc_ff[mul_stage_thread_id][`MUL_STAGES];
 

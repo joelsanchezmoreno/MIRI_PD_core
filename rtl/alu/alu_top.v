@@ -222,7 +222,9 @@ assign alu_to_wb_intr = (  is_r_type_instr(req_alu_info.opcode)
                          | is_branch_type_instr(req_alu_info.opcode) 
                          | is_jump_instr(req_alu_info.opcode) 
                          | is_iret_instr(req_alu_info.opcode) 
-                         | is_tlb_instr(req_alu_info.opcode));
+                         | is_tlb_instr(req_alu_info.opcode)
+                         | is_get_thread_id_instr(req_alu_info.opcode)
+                         | is_privileged_instr(req_alu_info.opcode));
 genvar kk;
 generate for (kk=0; kk < `THR_PER_CORE; kk++) 
 begin
@@ -666,6 +668,13 @@ begin
 		take_branch_next =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid);
         iret_instr_next[thread_id] = !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid);
     end
+    //GET_THREAD_ID
+    else if (opcode == `INSTR_GET_THR_ID_OPCODE)
+    begin
+        oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,thread_id);
+        rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
+    end
+
     req_dcache_info_next.xcpt_alu    = '0;
 
     req_wb_info_next.instr_id    = (req_alu_valid) ? req_alu_instr_id : req_alu_instr_id_ff[thread_id];
@@ -675,18 +684,18 @@ begin
     req_wb_info_next.tlb_id       = tlb_id_next; 
     req_wb_info_next.tlb_req_info = tlb_req_info_next;
                                 
-    req_wb_info_next.rf_wen       =  is_r_type_instr(opcode) | is_mov_instr(opcode);
+    req_wb_info_next.rf_wen       =  is_r_type_instr(opcode) | is_mov_instr(opcode) | is_get_thread_id_instr(opcode);
 
     req_wb_info_next.rf_dest      = (req_alu_valid) ? req_alu_info.rd_addr :
                                                       req_alu_info_ff[thread_id].rd_addr;
     req_wb_info_next.rf_data      = rf_data;
+    req_wb_info_next.chg_core_mode= is_privileged_instr(opcode);
                       
     req_wb_info_next.xcpt_fetch   = (req_alu_valid) ? xcpt_fetch_in : '0;
     req_wb_info_next.xcpt_decode  = (req_alu_valid) ? xcpt_decode_in: '0;
     req_wb_info_next.xcpt_alu     = xcpt_alu;
     req_wb_info_next.xcpt_mul     = '0;
     req_wb_info_next.xcpt_cache   = '0;
-
 end
 
 /////////////////////////////////

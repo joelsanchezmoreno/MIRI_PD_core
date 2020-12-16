@@ -15,6 +15,7 @@ module data_cache_mt
 
     // Exception
     output  logic                               xcpt_bus_error,
+    output  logic                               xcpt_store_cond,
 
     // Request from the core pipeline
     input   dcache_request_t                    req_info,
@@ -275,10 +276,10 @@ begin
 
         // Exception
     xcpt_bus_error = 1'b0;
+    xcpt_store_cond = 1'b0;
 
         // Response to core
     rsp_valid       = 1'b0;
-    rsp_error       = 1'b0;
     dcache_tags_hit = 1'b0;
 
     // Mantain values for next clock
@@ -361,9 +362,9 @@ begin
                         // for this thread. Return error.
                         else 
                         begin
-                            rsp_valid = 1'b1;
-                            rsp_error = 1'b1;
-                            rsp_data  = '1;
+                            rsp_valid       = 1'b1;
+                            xcpt_store_cond = 1'b1;
+                            rsp_data        = '1;
                         end
                     end
 
@@ -431,14 +432,14 @@ begin
                                 if(  !dCache_reserved_valid_ff[req_target_pos[thread_id]]
                                    | dCache_reserved_way_ff[req_target_pos[thread_id]] != thread_id)
                                 begin
-                                    rsp_valid = 1'b1;
-                                    rsp_error = 1'b1;
-                                    rsp_data  = '1;
+                                    rsp_valid       = 1'b1;
+                                    xcpt_store_cond = 1'b1;
+                                    rsp_data        = '1;
                                     dcache_ready_next[thread_id]   = 1'b1;
                                 end
                             end
                         end
-                        if (!rsp_error)
+                        if (!xcpt_store_cond)
                         begin
                             // We evaluate if a different thread failed to get the
                             // same tag, if that is the case we then move to
@@ -529,7 +530,7 @@ begin
                                     end //!dCache_dirty_ff[req_target_pos[thread_id]]
                                 end // store_buffer_hit_way
                             end // !blocked by another thread
-                        end //!rsp_error
+                        end //!xcpt_store_cond
                     end // !LD_hit
                 end // req_valid
                 else

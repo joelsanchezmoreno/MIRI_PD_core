@@ -9,6 +9,7 @@ module decode_top
     output  priv_mode_t [`THR_PER_CORE-1:0]     priv_mode,
     output  multithreading_mode_t               mt_mode,
     input   logic   [`THR_PER_CORE-1:0]         iret_instr,
+    input   logic                               change_core_mode,
 
     // Stall pipeline
     input   logic   [`THR_PER_CORE-1:0]         stall_decode,
@@ -67,6 +68,8 @@ logic [`THR_PER_CORE_WIDTH-1:0] previous_thread;
 
 // Control signals for requests to be sent to ALU
 logic                                       req_to_alu_valid_next;
+logic [`THR_PER_CORE-1:0][`ROB_ID_RANGE]    req_to_alu_instr_id_next;
+logic [`THR_PER_CORE-1:0][`ROB_ID_RANGE]    req_to_alu_instr_id_ff;
 alu_request_t                               req_to_alu_info_next;
 logic          [`THR_PER_CORE-1:0]          req_to_alu_valid_ff;
 alu_request_t  [`THR_PER_CORE-1:0]          req_to_alu_info_ff;
@@ -76,6 +79,8 @@ logic   [`INSTR_OFFSET_LO_ADDR_RANGE]       fetch_instr_data_ff;
 
 // Control signals for requests to be sent to MUL
 logic                                       req_to_mul_valid_next;
+logic [`THR_PER_CORE-1:0][`ROB_ID_RANGE]    req_to_mul_instr_id_next;
+logic [`THR_PER_CORE-1:0][`ROB_ID_RANGE]    req_to_mul_instr_id_ff;
 mul_request_t                               req_to_mul_info_next;
 logic           [`THR_PER_CORE-1:0]         req_to_mul_valid_ff;
 mul_request_t   [`THR_PER_CORE-1:0]         req_to_mul_info_ff;
@@ -164,6 +169,7 @@ assign req_to_alu_valid_next =  ( flush_decode[thread_id]       ) ? 1'b0       :
 
 assign req_to_alu_valid     = (flush_decode[previous_thread]) ? 1'b0 : req_to_alu_valid_ff[previous_thread];
 assign req_to_alu_info      = req_to_alu_info_ff[previous_thread];
+assign req_to_alu_instr_id  = req_to_alu_instr_id_ff[previous_thread];
 assign req_to_alu_pc        = req_to_alu_pc_ff[previous_thread];
 assign req_to_alu_thread_id = previous_thread;
 
@@ -186,7 +192,8 @@ begin
         // CLK    EN                             DOUT                  DIN            
     `EN_FF(clock, update_ff & fetch_instr_valid, req_to_alu_pc_ff[pp], fetch_instr_pc)
    
-        // CLK    EN                             DOUT                    DIN            
+        // CLK    EN                             DOUT                        DIN            
+    `EN_FF(clock, update_ff & fetch_instr_valid, req_to_alu_instr_id_ff[pp], req_to_alu_instr_id_next)
     `EN_FF(clock, update_ff & fetch_instr_valid, req_to_alu_info_ff[pp], req_to_alu_info_next)
     `EN_FF(clock, update_ff & fetch_instr_valid, mul_instr_ff,           mul_instr)
     `EN_FF(clock, update_ff & fetch_instr_valid, fetch_instr_data_ff,    fetch_instr_data[`INSTR_OFFSET_LO_ADDR_RANGE])
@@ -205,6 +212,7 @@ assign req_to_mul_valid_next =  ( flush_decode[thread_id]       ) ? 1'b0        
 
 assign req_to_mul_valid     = (flush_decode[previous_thread]) ? 1'b0 : req_to_mul_valid_ff[previous_thread];
 assign req_to_mul_info      = req_to_mul_info_ff[previous_thread];
+assign req_to_mul_instr_id  = req_to_mul_instr_id_ff[previous_thread];
 assign req_to_mul_pc        = req_to_mul_pc_ff[previous_thread];
 assign req_to_mul_thread_id = previous_thread;
 
@@ -225,9 +233,10 @@ begin
     `RST_EN_FF(clock, reset | flush_decode[kk], saved_request_mul_en, saved_request_mul[kk], (fetch_instr_valid && mul_instr && stall_decode[kk]), '0)
 
 
-        // CLK    EN                             DOUT                    DIN                  
-    `EN_FF(clock, update_ff & fetch_instr_valid, req_to_mul_pc_ff[kk],   fetch_instr_pc)
-    `EN_FF(clock, update_ff & fetch_instr_valid, req_to_mul_info_ff[kk], req_to_mul_info_next)
+        // CLK    EN                             DOUT                        DIN                  
+    `EN_FF(clock, update_ff & fetch_instr_valid, req_to_mul_instr_id_ff[kk], req_to_mul_instr_id_next)
+    `EN_FF(clock, update_ff & fetch_instr_valid, req_to_mul_pc_ff[kk],       fetch_instr_pc)
+    `EN_FF(clock, update_ff & fetch_instr_valid, req_to_mul_info_ff[kk],     req_to_mul_info_next)
 end
 endgenerate
 
@@ -279,27 +288,23 @@ begin
     logic thread_is_active;
     assign thread_is_active = (thread_id == ii);
 
-    logic update_en;
-    assign update_en = thread_is_active;
-
         //  CLK    RST                    DOUT                 DIN              DEF
     `RST_FF(clock, reset | flush_rob[ii], stall_decode_ff[ii], stall_decode[ii], '0)
 
-        // CLK    EN         DOUT               DIN   
-    `EN_FF(clock, update_en, reg_rob_id_ff[ii], (flush_decode_ff[ii]) ? reg_rob_id_next_2[ii] : reg_rob_id_next[ii])
+        // CLK    EN                DOUT               DIN   
+    `EN_FF(clock, thread_is_active, reg_rob_id_ff[ii], (flush_decode_ff[ii]) ? reg_rob_id_next_2[ii] : reg_rob_id_next[ii])
 
         //  CLK    RST                    DOUT                      DIN                                                                                DEF
     `RST_FF(clock, reset | flush_rob[ii], reg_blocked_valid_ff[ii], (flush_decode_ff[ii]) ? reg_blocked_valid_next_2[ii] : reg_blocked_valid_next[ii], '0)
-   
     
-        //     CLK    RST                    EN                DOUT                        DIN                           DEF
-    `RST_EN_FF(clock, reset | flush_rob[ii], thread_is_active, reorder_buffer_tail_ff[ii], reorder_buffer_tail_next[ii], '0)
+        //  CLK    RST                    DOUT                        DIN                           DEF
+    `RST_FF(clock, reset | flush_rob[ii], reorder_buffer_tail_ff[ii], reorder_buffer_tail_next[ii], '0)
 
         //  CLK    RST                    DOUT                        DIN                           DEF
     `RST_FF(clock, reset | flush_rob[ii], reg_blocked_valid_ff_2[ii], reg_blocked_valid_next_2[ii], '0)
 
-        //     CLK    RST                    DOUT                            DIN                    DEF
-    `RST_EN_FF(clock, reset | flush_rob[ii], update_en, reg_rob_id_ff_2[ii], reg_rob_id_next_2[ii], '0)
+        //     CLK    RST                    EN                DOUT                 DIN                    DEF
+    `RST_EN_FF(clock, reset | flush_rob[ii], thread_is_active, reg_rob_id_ff_2[ii], reg_rob_id_next_2[ii], '0)
     
         //  CLK    RST                    DOUT                 DIN              DEF
     `RST_FF(clock, reset | flush_rob[ii], flush_decode_ff[ii], flush_decode[ii], '0)
@@ -309,6 +314,8 @@ endgenerate
 
 ///////////////////////
 // Manage RoB tickets and blocker
+integer iter0;
+
 always_comb
 begin
     // Mantain FF values 
@@ -399,9 +406,15 @@ begin
             end
         end
     end          
-   
-    if ((req_to_alu_valid | req_to_mul_valid) & !flush_decode[thread_id])
-        reorder_buffer_tail_next[thread_id] = reorder_buffer_tail_ff[thread_id] + 1'b1;
+    for (iter0=0; iter0 < `THR_PER_CORE; iter0++) 
+    begin
+        if( (  (req_to_alu_valid && req_to_alu_thread_id == iter0)
+             | (req_to_mul_valid && req_to_mul_instr_id== iter0)) 
+           & !flush_decode[iter0])
+       begin
+            reorder_buffer_tail_next[iter0] = reorder_buffer_tail_ff[iter0] + 1'b1;
+        end
+    end
 
     ////////////////////////////////////////
     // Update blocker arrays if needed
@@ -409,7 +422,8 @@ begin
     begin
         // Check if the instruction generates a result
         if (  is_r_type_instr(opcode) | is_mul_instr(opcode) 
-            | is_load_instr(opcode)   | is_mov_instr(opcode))
+            | is_load_instr(opcode)   | is_mov_instr(opcode)
+            | is_get_thread_id_instr(opcode))
         begin
             reg_blocked_valid_next[thread_id][rd_addr]  = 1'b1;
             reg_rob_id_next[thread_id][rd_addr]         = reorder_buffer_tail_next[thread_id];
@@ -448,7 +462,7 @@ begin
     // Opcode and destination register are always decoded from the instruction
     // provided by the fetch stage
         // ALU
-    req_to_alu_instr_id                  = reorder_buffer_tail_ff[thread_id];
+    req_to_alu_instr_id_next             = reorder_buffer_tail_next[thread_id];
     req_to_alu_info_next.opcode          = opcode;
     req_to_alu_info_next.rd_addr         = rd_addr;
     req_to_alu_info_next.ra_addr         = ra_addr;
@@ -459,7 +473,7 @@ begin
     req_to_alu_info_next.rob_blocks_src2 = rob_blocks_src2;  
 
         // MUL                                                                              
-    req_to_mul_instr_id                  = reorder_buffer_tail_ff[thread_id];
+    req_to_mul_instr_id_next             = reorder_buffer_tail_next[thread_id];
     req_to_mul_info_next.rd_addr         = (req_to_mul_valid_ff[thread_id]) ? req_to_mul_info_ff[thread_id].rd_addr :
                                                                               rd_addr;
     req_to_mul_info_next.ra_addr         = (req_to_mul_valid_ff[thread_id]) ? req_to_mul_info_ff[thread_id].ra_addr :
@@ -570,7 +584,9 @@ begin
 
         // Raise an exception because the instruction is not supported
         else if (  !is_r_type_instr(opcode) & !is_mul_instr(opcode)
-                 & !is_m_type_instr(opcode) & !is_nop_instr(opcode))
+                 & !is_m_type_instr(opcode) & !is_nop_instr(opcode)
+                 & !is_privileged_instr(opcode)
+                 & !is_get_thread_id_instr(opcode))
         begin
             decode_xcpt_next.xcpt_illegal_instr = fetch_instr_valid & !flush_decode[thread_id];
         end                  
@@ -580,13 +596,13 @@ end
 ////////////////////////////////
 // Multi-threading mode
 multithreading_mode_t   mt_mode_next;
-logic                   req_mt_mode;
 
-assign req_mt_mode  = (writeEnRF && (destRF == `MT_MODE_REG_ADDR)) ? 1'b1 : 1'b0;
-assign mt_mode_next = (req_mt_mode) ? writeValRF : mt_mode;
+assign mt_mode_next = (change_core_mode) ? (mt_mode  == Single_Threaded) ? Multi_Threaded : 
+                                                                           Single_Threaded : 
+                                           mt_mode;
 
-    //     CLK    RST    EN           DOUT     DIN           DEF
-`RST_EN_FF(clock, reset, req_mt_mode, mt_mode, mt_mode_next, '0) // Single-threaded by default
+    //     CLK    RST    EN                DOUT     DIN           DEF
+`RST_EN_FF(clock, reset, change_core_mode, mt_mode, mt_mode_next, '0) // Single-threaded by default
 
 ////////////////////////////////
 // Register File
@@ -614,7 +630,7 @@ genvar ll;
 generate for (ll=0; ll < `THR_PER_CORE; ll++) 
 begin
     logic  writeEnRF_aux;
-    assign writeEnRF_aux = writeEnRF & !req_mt_mode & (ll == write_thread_idRF);
+    assign writeEnRF_aux = writeEnRF & (ll == write_thread_idRF);
 
     logic xcpt_valid_aux;
     assign xcpt_valid_aux = xcpt_valid & (ll == xcpt_thread_id) ;

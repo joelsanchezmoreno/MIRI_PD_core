@@ -68,6 +68,7 @@ endgenerate
 //////////////////////////////////////////////////
 // Exceptions
 cache_xcpt_t  xcpt_cache;
+logic xcpt_store_cond;
 logic xcpt_bus_error;
 logic xcpt_dtlb_miss;
 
@@ -78,6 +79,7 @@ begin
                (req_valid_ff[thread_id]) ? req_info_ff[thread_id].is_store :
                                            1'b0;
 
+    xcpt_cache.xcpt_store_cond = xcpt_store_cond;                                      
     xcpt_cache.xcpt_bus_error  = xcpt_bus_error;
     xcpt_cache.xcpt_dtlb_miss  =   xcpt_dtlb_miss 
                                  | (!dTlb_write_privilege & dTlb_rsp_valid & is_store); 
@@ -92,7 +94,6 @@ end
 // Signals from D$
 logic [`DCACHE_MAX_ACC_SIZE-1:0]    rsp_data_dcache;
 logic                               dcache_rsp_valid;
-logic                               dcache_rsp_error;
 
 // Signals for WB request
 logic                               req_wb_valid_next;
@@ -111,6 +112,7 @@ assign req_wb_thread_id = previous_thread;
 
 always_comb
 begin
+    req_wb_info_next.chg_core_mode  = 1'b0;  
     req_wb_info_next.instr_id       = (req_valid) ? req_info.instr_id : req_info_ff[thread_id].instr_id;
     req_wb_info_next.pc             = (req_valid) ? req_info.pc : req_info_ff[thread_id].pc;
                                  
@@ -118,11 +120,9 @@ begin
     req_wb_info_next.tlb_id         = '0;
     req_wb_info_next.tlb_req_info   = '0;
                                  
-    req_wb_info_next.rf_wen         = (req_valid) ? (dcache_rsp_error) ? 1'b1 : 
-                                                    !req_info.is_store : !req_info_ff[thread_id].is_store;
+    req_wb_info_next.rf_wen         = (req_valid) ? !req_info.is_store : !req_info_ff[thread_id].is_store;
 
-    req_wb_info_next.rf_dest        = (req_valid) ? (dcache_rsp_error) ? `COND_ERR_REG_ADDR : 
-                                                    req_info.rd_addr   : req_info_ff[thread_id].rd_addr;
+    req_wb_info_next.rf_dest        = (req_valid) ? req_info.rd_addr   : req_info_ff[thread_id].rd_addr;
 
     req_wb_info_next.rf_data        = rsp_data_dcache ;
 
@@ -141,6 +141,7 @@ assign instr_xcpt =   req_info.xcpt_fetch.xcpt_itlb_miss
                     | req_info.xcpt_decode.xcpt_illegal_instr
                     | req_info.xcpt_alu.xcpt_overflow
                     | xcpt_cache.xcpt_bus_error   
+                    | xcpt_cache.xcpt_store_cond
                     | xcpt_cache.xcpt_dtlb_miss   
                     | xcpt_cache.xcpt_addr_fault ;
 
@@ -193,6 +194,7 @@ dcache
 
     // Exception
     .xcpt_bus_error     ( xcpt_bus_error    ),
+    .xcpt_store_cond    ( xcpt_store_cond   ),
     
     // Request from the core pipeline
     .req_valid          ( dcache_req_valid  ),
@@ -200,7 +202,6 @@ dcache
 
     // Response to the core pipeline
     .rsp_valid          ( dcache_rsp_valid  ),
-    .rsp_error          ( dcache_rsp_error  ),
     .rsp_data           ( rsp_data_dcache   ),
     
     // Request to the memory hierarchy

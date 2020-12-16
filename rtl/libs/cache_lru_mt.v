@@ -8,6 +8,7 @@ module cache_lru_mt
     parameter WAYS_PER_SET   = `ICACHE_WAYS_PER_SET,
     parameter NUM_SET_W      = $clog2(NUM_SET),
     parameter NUM_WAYS_W     = $clog2(NUM_WAYS),
+    parameter NUM_WAYS_PER_SET_MT = `ICACHE_NUM_WAYS_PER_SET_MT,
     parameter WAYS_PER_SET_W = $clog2(WAYS_PER_SET) 
 )
 (
@@ -50,7 +51,7 @@ generate
         //      CLK    RST    DOUT        DIN      DEF
         `RST_FF(clock, reset, counter_ff, counter, '0 )
 
-        integer way_num,way_num_aux;
+        integer way_num,way_num_aux0,way_num_aux1,way_num_aux2,way_num_aux3;
         always_comb
         begin
             counter = counter_ff;
@@ -78,8 +79,8 @@ generate
                 begin
                     for (way_num = 0; way_num < WAYS_PER_SET ; way_num++)
                     begin                        
-                        if (   (way_num >= (thread_id * NUM_WAYS_MT)) // bottom limit
-                            && (way_num <  (thread_id * NUM_WAYS_MT +NUM_WAYS_MT)) // upper limit
+                        if (   (way_num >= (thread_id * NUM_WAYS_PER_SET_MT)) // bottom limit
+                            && (way_num <  (thread_id * NUM_WAYS_PER_SET_MT +NUM_WAYS_PER_SET_MT)) // upper limit
                             && (max_count < counter_ff[way_num]))
                         begin
                             max_count               = counter_ff[way_num];
@@ -94,25 +95,25 @@ generate
                 // If Single Threaded then we look all the ways
                 if (mt_mode == Single_Threaded)
                 begin
-                    for (way_num_aux = 0; way_num_aux < WAYS_PER_SET; way_num_aux++)
+                    for (way_num_aux0 = 0; way_num_aux0 < WAYS_PER_SET; way_num_aux0++)
                     begin
                         // we increase in one the ways as they get older
-                        if (counter_ff[way_num_aux] <= counter_ff[update_way])
-                            counter[way_num_aux] = counter_ff[way_num_aux] + 1'b1;
+                        if (counter_ff[way_num_aux0] <= counter_ff[update_way])
+                            counter[way_num_aux0] = counter_ff[way_num_aux0] + 1'b1;
                     end
                 end
                 // If Multi Threaded then we look only the ways belonging
                 // to the thread and increase them as they get older
                 else 
                 begin
-                    for (way_num_aux = 0; way_num_aux < WAYS_PER_SET ; way_num_aux++)
+                    for (way_num_aux1 = 0; way_num_aux1 < WAYS_PER_SET ; way_num_aux1++)
                     begin                        
-                        if (   (way_num_aux >= (thread_id * NUM_WAYS_MT)) // bottom limit
-                            && (way_num_aux <  (thread_id * NUM_WAYS_MT + NUM_WAYS_MT)) // upper limit
-                            && (max_count < counter_ff[way_num_aux]))
+                        if (   (way_num_aux1 >= (thread_id * NUM_WAYS_PER_SET_MT)) // bottom limit
+                            && (way_num_aux1 <  (thread_id * NUM_WAYS_PER_SET_MT + NUM_WAYS_PER_SET_MT)) // upper limit
+                            && (max_count < counter_ff[way_num_aux1]))
                         begin
-                            if (counter_ff[way_num_aux] <= counter_ff[update_way])
-                               counter[way_num_aux] = counter_ff[way_num_aux] + 1'b1;
+                            if (counter_ff[way_num_aux1] <= counter_ff[update_way])
+                               counter[way_num_aux1] = counter_ff[way_num_aux1] + 1'b1;
                         end
                     end // for
                 end //else - multithreaded
@@ -131,25 +132,25 @@ generate
                 // If Single Threaded then we look all the ways
                 if (mt_mode == Single_Threaded)
                 begin
-                    for (way_num_aux = 0; way_num_aux < WAYS_PER_SET; way_num_aux++)
+                    for (way_num_aux2 = 0; way_num_aux2 < WAYS_PER_SET; way_num_aux2++)
                     begin
                         // we increase in one the ways as they get older
-                        if (counter_ff[way_num_aux] <= counter_ff[update_way_mt])
-                            counter[way_num_aux] = counter_ff[way_num_aux] + 1'b1;
+                        if (counter_ff[way_num_aux2] <= counter_ff[update_way_mt])
+                            counter[way_num_aux2] = counter_ff[way_num_aux2] + 1'b1;
                     end
                 end
                 // If Multi Threaded then we look only the ways belonging
                 // to the thread and increase them as they get older
                 else 
                 begin
-                    for (way_num_aux = 0; way_num_aux < WAYS_PER_SET ; way_num_aux++)
+                    for (way_num_aux3 = 0; way_num_aux3 < WAYS_PER_SET ; way_num_aux3++)
                     begin                        
-                        if (   (way_num_aux >= (update_thread_mt * NUM_WAYS_MT)) // bottom limit
-                            && (way_num_aux <  (update_thread_mt * NUM_WAYS_MT + NUM_WAYS_MT)) // upper limit
-                            && (max_count < counter_ff[way_num_aux]))
+                        if (   (way_num_aux3 >= (update_thread_mt * NUM_WAYS_PER_SET_MT)) // bottom limit
+                            && (way_num_aux3 <  (update_thread_mt * NUM_WAYS_PER_SET_MT + NUM_WAYS_PER_SET_MT)) // upper limit
+                            && (max_count < counter_ff[way_num_aux3]))
                         begin
-                            if (counter_ff[way_num_aux] <= counter_ff[update_way_mt])
-                               counter[way_num_aux] = counter_ff[way_num_aux] + 1'b1;
+                            if (counter_ff[way_num_aux3] <= counter_ff[update_way_mt])
+                               counter[way_num_aux3] = counter_ff[way_num_aux3] + 1'b1;
                         end
                     end // for
                 end //else - multithreaded

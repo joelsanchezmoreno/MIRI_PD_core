@@ -8,6 +8,7 @@ module wb_top
     input   logic [`THR_PER_CORE_WIDTH-1:0]     thread_id,
     output  logic [`THR_PER_CORE-1:0]           flush_pipeline,
     output  logic [`THR_PER_CORE-1:0]           flush_cache,
+    output  logic                               change_core_mode,
 
         // Control signals with ALU/Decode
     input   logic [`THR_PER_CORE_WIDTH-1:0]     rob_thread_id,
@@ -91,6 +92,7 @@ reorder_buffer
     .clock                  ( clock                 ),
     .reset                  ( reset                 ),
     .thread_id              ( thread_id             ),
+    .change_core_mode       ( change_core_mode      ),
     .flush_pipeline         ( flush_pipeline        ),
     .flush_cache            ( flush_cache           ),
 

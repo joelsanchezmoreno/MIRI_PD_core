@@ -140,6 +140,7 @@ logic [`THR_PER_CORE_WIDTH-1:0]  cache_req_to_wb_thread_id;
 // WriteBack signals to other stages
 logic  [`THR_PER_CORE-1:0]  wb_flush_pipeline;
 logic  [`THR_PER_CORE-1:0]  wb_flush_cache;
+logic                       change_core_mode;
 
 // Request to Cache
 dcache_request_t                    wb_req_to_dcache_info;
@@ -256,6 +257,7 @@ decode_top
 
     .priv_mode          ( priv_mode             ),
     .mt_mode            ( mt_mode               ),
+    .change_core_mode   ( change_core_mode      ),
     .iret_instr         ( alu_iret_instr        ),
 
     // Stall pipeline
@@ -511,6 +513,7 @@ wb_top
     .thread_id              ( cache_req_to_wb_thread_id ),
     .flush_pipeline         ( wb_flush_pipeline         ),
     .flush_cache            ( wb_flush_cache            ),
+    .change_core_mode       ( change_core_mode          ),
 
     // Reorder buffer
     .reorder_buffer_full    ( reorder_buffer_full       ),

@@ -18,6 +18,9 @@
     `define SX(SIZE, SIGNAL) \
         (((SIZE-$bits(SIGNAL)) == 0) ? SIGNAL : { {(SIZE-$bits(SIGNAL)){SIGNAL[$bits(SIGNAL)-1]}}, SIGNAL })
 
+    `define SX0(SIZE, SIGNAL) \
+        (((SIZE-$bits(SIGNAL)) == 0) ? SIGNAL : { {(SIZE-$bits(SIGNAL)){SIGNAL[$bits(SIGNAL)]}}, SIGNAL })
+
     // Flip flops
     `define FF(CLK, DATAOUT, DATAIN) \
         always @ (posedge CLK) \

@@ -145,6 +145,25 @@ function automatic is_iret_instr;
     end
 endfunction
 
+function automatic is_privileged_instr;
+    input logic [`INSTR_OPCODE_RANGE] opcode;
+    begin
+        is_privileged_instr = 1'b0;
+        if (opcode == `INSTR_CHANGE_CORE_MODE_OPCODE)
+                is_privileged_instr = 1'b1;
+    end
+endfunction
+
+function automatic is_get_thread_id_instr;
+    input logic [`INSTR_OPCODE_RANGE] opcode;
+    begin
+        is_get_thread_id_instr = 1'b0;
+        if ((opcode == `INSTR_GET_THR_ID_OPCODE))
+                is_get_thread_id_instr = 1'b1;
+    end
+endfunction
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // ENUMS
 ////////////////////////////////////////////////////////////////////////////////
@@ -182,7 +201,7 @@ typedef enum logic [2:0] {
    dTlb_miss        = 3'b100,
    cache_bus_error  = 3'b101,
    cache_addr_fault = 3'b110,
-   reserved         = 3'b111
+   cache_store_cond = 3'b111
 } xcpt_type_t;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -219,6 +238,7 @@ typedef struct packed
 {
     logic                       xcpt_addr_fault;
     logic                       xcpt_bus_error;
+    logic                       xcpt_store_cond;
     logic                       xcpt_dtlb_miss;
     logic [`VIRT_ADDR_RANGE]    xcpt_addr_val;
     logic [`PC_WIDTH_RANGE]     xcpt_pc;
@@ -275,6 +295,7 @@ typedef struct packed
 typedef struct packed 
 {
     logic [`ROB_ID_RANGE]           instr_id; // identifier
+    logic                           chg_core_mode;
         //TLBWRITE
     logic                           tlbwrite;   // asserted if req is TLBWRITE
     logic                           tlb_id; 
@@ -353,6 +374,7 @@ typedef struct packed
 {
     logic [`ROB_ID_RANGE]           instr_id;
     logic [`PC_WIDTH-1:0]           pc;
+    logic                           chg_core_mode;
         // TLBWRITE
     logic                           tlbwrite;  
     logic                           tlb_id; 

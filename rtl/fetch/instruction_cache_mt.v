@@ -65,18 +65,21 @@ logic [`THR_PER_CORE-1:0][`ICACHE_NUM_SET_RANGE]        miss_icache_set_ff;
 logic [`THR_PER_CORE-1:0][`ICACHE_WAYS_PER_SET_RANGE]   miss_icache_way_next; 
 logic [`ICACHE_WAYS_PER_SET_RANGE]                      miss_icache_way; 
 logic [`THR_PER_CORE-1:0][`ICACHE_WAYS_PER_SET_RANGE]   miss_icache_way_ff; 
+logic [`THR_PER_CORE-1:0][`ICACHE_TAG_RANGE]            req_addr_tag_next;
+logic [`THR_PER_CORE-1:0][`ICACHE_TAG_RANGE]            req_addr_tag_ff;
 
 //         CLK    RST    EN           DOUT                DIN                  DEF
 `RST_EN_FF(clock, reset, !icache_hit, miss_icache_set_ff, miss_icache_set_next, '0)
 `RST_EN_FF(clock, reset, !icache_hit, miss_icache_way_ff, miss_icache_way_next, '0)
+`RST_EN_FF(clock, reset, !icache_hit, req_addr_tag_ff,    req_addr_tag_next,    '0)
 
 //////////////////////////////////////////////////
 // Ready signal to stall the pipeline if ICache is busy
 logic   [`THR_PER_CORE-1:0] icache_ready_next, icache_ready_ff;
-assign icache_ready = !reset & icache_ready_ff; //icache_ready_next;
+assign icache_ready = (reset) ? '0 : icache_ready_ff;
 
     //  CLK    RST    DOUT             DIN                DEF
-`RST_FF(clock, reset, icache_ready_ff, icache_ready_next, '1)
+`RST_FF(clock, reset, icache_ready_ff, icache_ready_next, 2'b11)
 
 logic   [`THR_PER_CORE-1:0] pendent_req, pendent_req_ff;
 
@@ -95,6 +98,7 @@ begin
 
     miss_icache_set_next = miss_icache_set_ff;
     miss_icache_way_next = miss_icache_way_ff;
+    req_addr_tag_next    = req_addr_tag_ff;
 
     // There is a miss if the tag is not stored
     req_addr_tag    = req_addr[`ICACHE_TAG_ADDR_RANGE];
@@ -145,6 +149,7 @@ begin
             `endif  
             miss_icache_set_next[req_thread_id] = req_addr_set;
             miss_icache_way_next[req_thread_id] = miss_icache_way;
+            req_addr_tag_next[req_thread_id]    = req_addr_tag;
             pendent_req[req_thread_id]          = 1'b1;
             req_info_miss.addr                  = req_addr >> `ICACHE_RSH_VAL;
             req_info_miss.is_store              = 1'b0;
@@ -166,7 +171,7 @@ begin
             `ifdef VERBOSE_ICACHE
                 $display("[ICACHE] Response from MM valid. instMem_tag[%h] = %h",miss_icache_pos,rsp_data_miss);
             `endif            
-            instMem_tag[miss_icache_pos]     = req_addr_tag;
+            instMem_tag[miss_icache_pos]     = req_addr_tag_ff[rsp_thread_id];
             instMem_data[miss_icache_pos]    = rsp_data_miss;
             instMem_valid[miss_icache_pos]   = 1'b1;
             pendent_req[rsp_thread_id]       = 1'b0;

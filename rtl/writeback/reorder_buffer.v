@@ -9,6 +9,7 @@ module reorder_buffer
     output  logic [`THR_PER_CORE-1:0]           flush_pipeline,
     output  logic [`THR_PER_CORE-1:0]           flush_cache,
 
+    output  logic                               change_core_mode,
     output  logic [`THR_PER_CORE-1:0]           reorder_buffer_full,
         // Control signals with ALU
     input   logic [`THR_PER_CORE_WIDTH-1:0]     rob_thread_id,
@@ -147,6 +148,7 @@ end
 
 ////////////////////////////
 // Output FF
+logic                               change_core_mode_next;
 
 logic                               req_to_dcache_valid_next;
 dcache_request_t                    req_to_dcache_info_next;
@@ -170,10 +172,11 @@ tlb_req_info_t                      new_tlb_info_next;
 logic [`THR_PER_CORE_WIDTH-1:0]     new_tlb_thread_id_next;
 
 //      CLK    RST    DOUT                 DIN                      DEF
-`RST_FF(clock, reset, req_to_dcache_valid, req_to_dcache_valid_next, '0)
-`RST_FF(clock, reset, req_to_RF_writeEn,   req_to_RF_writeEn_next, '0)
-`RST_FF(clock, reset, xcpt_valid,          xcpt_valid_next,        '0)
-`RST_FF(clock, reset, new_tlb_entry,       new_tlb_entry_next,     '0)
+`RST_FF(clock, reset, change_core_mode,    change_core_mode_next,   '0)
+`RST_FF(clock, reset, req_to_dcache_valid, req_to_dcache_valid_next,'0)
+`RST_FF(clock, reset, req_to_RF_writeEn,   req_to_RF_writeEn_next,  '0)
+`RST_FF(clock, reset, xcpt_valid,          xcpt_valid_next,         '0)
+`RST_FF(clock, reset, new_tlb_entry,       new_tlb_entry_next,      '0)
  
 //  CLK    DOUT                     DIN                 
 `FF(clock, req_to_dcache_info     , req_to_dcache_info_next)
@@ -313,6 +316,7 @@ begin
     reorder_buffer_mem_instr_blocked = reorder_buffer_mem_instr_blocked_ff;
 
     // No RF write nor xcpt taken by default
+    change_core_mode_next    = 1'b0;
     req_to_RF_writeEn_next   = 1'b0;
     xcpt_valid_next          = 1'b0;
     new_tlb_entry_next       = 1'b0;
@@ -335,6 +339,7 @@ begin
         reorder_buffer_valid[oldest_thread][oldest_pos]  = 1'b0;
         reorder_buffer_tail[oldest_thread] = reorder_buffer_tail_ff[oldest_thread] + 1'b1;
 
+        change_core_mode_next    = reorder_buffer_data_ff[oldest_thread][oldest_pos].chg_core_mode;
         // Request to RF
         req_to_RF_writeEn_next   =   reorder_buffer_data_ff[oldest_thread][oldest_pos].rf_wen 
                                   & !reorder_buffer_data_ff[oldest_thread][oldest_pos].xcpt_info.valid;
@@ -370,6 +375,7 @@ begin
 
         if (alu_req_valid & (oldest_pos == alu_req_info.instr_id) & (oldest_thread == alu_thread_id))
         begin
+            change_core_mode_next    = alu_req_info.chg_core_mode;
             // Request to RF
             req_to_RF_writeEn_next   =   alu_req_info.rf_wen 
                                       & !alu_reorder_buffer_xcpt_info.valid;
@@ -393,6 +399,7 @@ begin
         end
         else if (mul_req_valid & (oldest_pos == mul_req_info.instr_id) & (oldest_thread == mul_thread_id))
         begin
+            change_core_mode_next    = mul_req_info.chg_core_mode;
             // Request to RF
             req_to_RF_writeEn_next   =   mul_req_info.rf_wen 
                                       & !mul_reorder_buffer_xcpt_info.valid;
@@ -413,6 +420,7 @@ begin
         end
         else //(cache_req_valid & (oldest_pos == cache_req_info.instr_id) & (oldest_thread == cache_thread_id))
         begin
+            change_core_mode_next    = cache_req_info.chg_core_mode;
             // Request to RF
             req_to_RF_writeEn_next   =   cache_req_info.rf_wen 
                                       & !cache_reorder_buffer_xcpt_info.valid;
@@ -472,6 +480,7 @@ begin
                                                                   & (oldest_pos    == alu_req_info.instr_id));
  
             reorder_buffer_data[alu_thread_id][alu_free_pos].instr_id      = alu_req_info.instr_id; 
+            reorder_buffer_data[alu_thread_id][alu_free_pos].chg_core_mode = alu_req_info.chg_core_mode; 
             reorder_buffer_data[alu_thread_id][alu_free_pos].tlbwrite      = alu_req_info.tlbwrite;
             reorder_buffer_data[alu_thread_id][alu_free_pos].tlb_id        = alu_req_info.tlb_id;
             reorder_buffer_data[alu_thread_id][alu_free_pos].tlb_req_info  = alu_req_info.tlb_req_info;
@@ -510,6 +519,7 @@ begin
         reorder_buffer_valid[mul_thread_id][mul_free_pos] = !(  (oldest_thread == mul_thread_id)
                                                               & (oldest_pos    == mul_req_info.instr_id));
 
+        reorder_buffer_data[mul_thread_id][mul_free_pos].chg_core_mode = mul_req_info.chg_core_mode; 
         reorder_buffer_data[mul_thread_id][mul_free_pos].instr_id      = mul_req_info.instr_id; 
         reorder_buffer_data[mul_thread_id][mul_free_pos].tlbwrite      = mul_req_info.tlbwrite;
         reorder_buffer_data[mul_thread_id][mul_free_pos].tlb_id        = mul_req_info.tlb_id;
@@ -527,6 +537,7 @@ begin
         reorder_buffer_valid[cache_thread_id][cache_free_pos] = !(  (oldest_thread == cache_thread_id)
                                                                   & (oldest_pos    == cache_req_info.instr_id));
 
+        reorder_buffer_data[cache_thread_id][cache_free_pos].chg_core_mode = cache_req_info.chg_core_mode; 
         reorder_buffer_data[cache_thread_id][cache_free_pos].instr_id      = cache_req_info.instr_id; 
         reorder_buffer_data[cache_thread_id][cache_free_pos].tlbwrite      = cache_req_info.tlbwrite;
         reorder_buffer_data[cache_thread_id][cache_free_pos].tlb_id        = cache_req_info.tlb_id;
