@@ -39,8 +39,6 @@ What does this check:
         - R3 = 0x1008
         - R4 = 0xA
         - R5 = 0xCBAE0604
-        - mm[0x1080] = compute
-        - mm[0x1084] = 0xEDA
         - mm[0x1038] = 0x0003070A
         - mm[0x1054] = 0x0000000A
         - mm[0x1070] = 0x00001008
@@ -303,7 +301,7 @@ Result: Working as expected
 ///////////////////////////////////////////////////////////////////////////
 // EXCEPTIONS STORE CONDITIONAL WITHOUT LOAD CONDITIONAL (TEST LOADS AND STORES)
 
-Test name: xcpt_illegal_instruction.hex
+Test name: xcpt_store_conditional.hex
 
 # mem[0x1008+0x30] -- initial value 0xCBAE05FA
 # mem[0x2000] -- initial value 0x07EF7DA1
