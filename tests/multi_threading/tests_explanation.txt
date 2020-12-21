@@ -90,16 +90,14 @@ Test name: multiple_branches.hex
 # mem[0x1060] -- initial value 0x00000000
 # mem[0x10E0] -- initial value 0x00000000
 
-1000:   GETID   R0              0 ADDED + NEW - done
-1004:   BNE     R0,R1,0x1080    1 ADDED - done
-1008:   CHGMODE                 2 ADDED + NEW - done
-100C:   ADDI    R30,R30,0xEDA   3 ADDED - done
+1000:   GETID   R0              0 
+1004:   BNE     R0,R1,0x1080    1 
+1008:   CHGMODE                 2 
+100C:   ADDI    R30,R30,0xEDA   3 
                             
 
 CODE THREAD 0
 -----------------------
-
-Next to be tested: branches
 1010:   ADDI R0,R0,0x1060   # @data  
 1014:   ADDI R1,R1,0x0      # iter
 1018:   ADDI R2,R2,0x2      # num iter - 1
@@ -177,35 +175,67 @@ Result: Working as expected
 
 Test name: multiple_branches_with_mul.hex
 
-# mem[0x1080] -- initial value 0x00000001
+# mem[0x1060] -- initial value 0x00000001
+# mem[0x10E0] -- initial value 0x00000001
 
-Next to be tested: branches
-1000:   ADDI R0,R0,0x1080       # @data  
-1004:   ADDI R1,R1,0x0          # iter
-1008:   ADDI R2,R2,0x2          # num iterations - 1
-100C:   ADDI R4,R4,0xEDA
-1010:   BEQ  R5,R4,0x10F0       # jump to NOPs as we have finished
+1000:   GETID   R0              0
+1004:   BNE     R0,R1,0x1080    1
+1008:   CHGMODE                 2
+100C:   ADDI    R30,R30,0xEDA   3
+    
+CODE THREAD 0
+-----------------------
+1010:   ADDI R0,R0,0x1080       # @data  
+1014:   ADDI R1,R1,0x0          # iter
+1018:   ADDI R2,R2,0x2          # num iterations - 1
+101C:   ADDI R4,R4,0xEDA
+1020:   BEQ  R5,R4,0x1500       # jump to NOPs as we have finished
 
                                 instr. ID per iteration
                                 #iter   0   1   2   3
 #loop
-    1014:   BGT R1,R2,0x102C            5   3   1   7  
-    1018:   LDW R3,0(R0)                6   4   2
-    101C:   MUL R3,R3,R2                7   5   3
-    1020:   STB 0(R0),R3                0   6   4
-    1024:   ADDI R1,R1,0x1              1   7   5
-    1028:   JUMP 0x1014                 2   0   6
+    1024:   BGT R1,R2,0x103C            1   7   5   3  
+    1028:   LDW R3,0(R0)                2   0   6
+    102C:   MUL R3,R3,R2                3   1   7
+    1030:   STB 0(R0),R3                4   2   0
+    1034:   ADDI R1,R1,0x1              5   3   1
+    1038:   JUMP 0x1024                 6   4   2
 
-102C:   BLT R1,R2,0x103C                0
-    1030:   STW 0x4(R0),R4              1
-    1034:   ADDI R5,R5,0xEDA            2
-    1038:   JUMP 0x1010                 3
+103C:   BLT R1,R2,0x104C                4
+    1040:   STW 0x4(R0),R4              5
+    1044:   ADDI R5,R5,0xEDA            6
+    1048:   JUMP 0x1020                 7
 
-103C:   ADDI R5,R5,0xFEA                
+104C:   ADDI R5,R5,0xFEA                
+        NOP
+    
+CODE THREAD 1
+-----------------------
+1080:   ADDI R0,R0,0x10DF   # @data  
+1084:   ADDI R1,R1,0x0      # iter
+1088:   ADDI R2,R2,0x2      # num iter - 1
+108C:   ADDI R4,R4,0xEDA    
+1090:   BEQ  R5,R4,0x1500   
+
+#loop                             
+    1094:   BGT R1,R2,0x10AC   
+    1098:   LDW R3,0(R0)       
+    109C:   MUL R3,R3,R2 
+    10A0:   STB 0(R0),R3       
+    10A4:   ADDI R1,R1,0x1     
+    10A8:   JUMP 0x1094        
+
+10AC:   BLT R1,R2,0x10BC       
+    10B0:   STW 0x4(R0),R4     
+    10B4:   ADDI R5,R5,0xEDA   
+    10B8:   JUMP 0x1090        
+
+10BC:   ADDI R5,R5,0xFEA       
         NOP
     
 What does this check: 
-    - Initialize memory (0x1080) to 0x00000001
+    - Initialize memory (0x1060) to 0x00000001
+    - Initialize memory (0x10E0) to 0x00000001
     - Ensure that BEQ, BGT and BNE work and we do not always jump
     - Check that instructions are cancelled if we jump, otherwise we should execute 
       BNE (PC: 0x102C) 2 times instead of 1
@@ -214,15 +244,17 @@ What does this check:
         R3 = 0x2 , 0x4, 0x8
 
 - If evertyhing goes as expected we should see the next values on the registers:
-        - R0 = 0x1080
+        - R0 = 0x1060 (thread 0) ; 0x10E0 (thread 1);
         - R1 = 0x3
         - R2 = 0x2
         - R3 = 0x8
         - R4 = 0xEDA
         - R5 = 0xEDA -- if R5 = 0xFEA instead of EDA something went wrong with JUMP on PC 0x1038
-        - mm[0x1080] = 0x8
-        - mm[0x1084] = 0xEDA
-        
+        - mm[0x1060] = 0x8
+        - mm[0x1064] = 0xEDA
+        - mm[0x10E0] = 0x8
+        - mm[0x10E4] = 0xEDA
+     
 Result: Working as expected                  
 
 ///////////////////////////////////////////////////////////////////////////
