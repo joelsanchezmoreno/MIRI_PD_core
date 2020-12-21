@@ -3,7 +3,8 @@
 
 Test name: multiple_ld_st_test.hex
 
-# mem[0x1008+0x30] -- initial value 0xCBAE05FA
+# mem[0x1018+0x30] -- initial value 0xCBAE05FA
+# mem[0x10C8+0x30] -- initial value 0xCBAE05FA
 
 1000:   GETID   R0              0 ADDED + NEW - done
 1004:   BNE     R0,R1,0x1080    1 ADDED - done
@@ -25,6 +26,8 @@ Test name: multiple_ld_st_test.hex
 1034:   STB  0x31(R3),R0        5   # mem[0x1018+0x30] = 0x0003 070A
 1038:   STW  0x4C(R3),R2        6   # mem[0x1018+0x4C] = 0x0000 000A
 103C:   STW  0x68(R3),R3        7   # mem[0x1018+0x68] = 0x0000 1008
+
+1040:   JUMP 0x1500             0
     
     #thread 1 code
 1080:   ADDI R0,R0,0x7          2
@@ -32,16 +35,17 @@ Test name: multiple_ld_st_test.hex
 1088:   ADD  R2,R0,R1           4
 108C:   ADDI R3,R3,0x10C8       5 CHANGED - done
 
-1090:   LDW  R5,0x30(R3)        6   # R5 = 0xCBAE05FA
-1094:   STW  0x30(R3),R2        7   # mem[0x10C8+0x30] = 0x0000 0000A
-1098:   LDW  R4,0x30(R3)        0   # R4 = mem[0x1058+0x30]
-109C:   ADD  R5,R5,R4           1   # R5 = R5 + R4 =  0xCBAE05FA + 0xA = 0xCBAE0604  
+1090:   LDW  R5,0x30(R3)        6   # R5 = 0xCBAE06FA
+1094:   STW  0x30(R3),R2        7   # mem[0x10C8+0x30] = 0x0000 0000B
+1098:   LDW  R4,0x30(R3)        0   # R4 = mem[0x10C8+0x30]
+109C:   ADD  R5,R5,R4           1   # R5 = R5 + R4 =  0xCBAE06FA + 0xB = 0xCBAE0705  
 
 10A0:   STB  0x32(R3),R1        2   # mem[0x10C8+0x30] = 0x0003 000A
 10A4:   STB  0x31(R3),R0        3   # mem[0x10C8+0x30] = 0x0003 070A
 10A8:   STW  0x4C(R3),R2        4   # mem[0x10C8+0x4C] = 0x0000 000A
 10AC:   STW  0x68(R3),R3        5   # mem[0x10C8+0x68] = 0x0000 10C8
 
+10B0:   JUMP 0x1500             6
 
 What does this check: 
     - Initialize memory (0x1048 and 0x10F8) to 0xCBAE05FA 
@@ -63,13 +67,13 @@ What does this check:
         - R2 = 0xA (thread 0) ; 0xB (thread 1)
         - R3 = 0x1018 (thread 0) and 0x10C8 (thread 1)
         - R4 = 0xA
-        - R5 = 0xCBAE0604
+        - R5 = 0xCBAE0604 (thread 0); 0xCBAE0705 (thread 1)
         - Thread 0
             - mm[0x1038] = 0x0003070A
             - mm[0x1054] = 0x0000000A
             - mm[0x1070] = 0x00001018
         - Thread 1
-            - mm[0x10F8] = 0x0003070A
+            - mm[0x10F8] = 0x0003080B
             - mm[0x1114] = 0x0000000A
             - mm[0x1130] = 0x000010C8
 
@@ -83,50 +87,88 @@ Result: Working as expected
 
 Test name: multiple_branches.hex
 
-# mem[0x1080] -- initial value 0x00000000
+# mem[0x1060] -- initial value 0x00000000
+# mem[0x10E0] -- initial value 0x00000000
+
+1000:   GETID   R0              0 ADDED + NEW - done
+1004:   BNE     R0,R1,0x1080    1 ADDED - done
+1008:   CHGMODE                 2 ADDED + NEW - done
+100C:   ADDI    R30,R30,0xEDA   3 ADDED - done
+                            
+
+CODE THREAD 0
+-----------------------
 
 Next to be tested: branches
-1000:   ADDI R0,R0,0x1080   # @data  
-1004:   ADDI R1,R1,0x0      # iter
-1008:   ADDI R2,R2,0x2      # num iter - 1
-100C:   ADDI R4,R4,0xEDA    
-1010:   BEQ  R5,R4,0x10F0   # jump to NOPs as we have finished
-
+1010:   ADDI R0,R0,0x1060   # @data  
+1014:   ADDI R1,R1,0x0      # iter
+1018:   ADDI R2,R2,0x2      # num iter - 1
+101C:   ADDI R4,R4,0xEDA    
+1020:   BEQ  R5,R4,0x1500
                             instr. ID per iteration
                             #iter   0   1   2   3
 #loop                             
-    1014:   BGT R1,R2,0x102C        5   3   1   7
-    1018:   LDW R3,0(R0)            6   4   2
-    101C:   ADD R3,R3,R2            7   5   3
-    1020:   STB 0(R0),R3            0   6   4
-    1024:   ADDI R1,R1,0x1          1   7   5
-    1028:   JUMP 0x1014             2   0   6
+    1024:   BGT R1,R2,0x103C        1   7   5   3
+    1028:   LDW R3,0(R0)            2   0   6
+    102C:   ADD R3,R3,R2            3   1   7
+    1030:   STB 0(R0),R3            4   2   0
+    1034:   ADDI R1,R1,0x1          5   3   1
+    1038:   JUMP 0x1024             6   4   2
 
-102C:   BLT R1,R2,0x103C            0
-    1030:   STW 0x4(R0),R4          1
-    1034:   ADDI R5,R5,0xEDA        2
-    1038:   JUMP 0x1010             3
+103C:   BLT R1,R2,0x104C            4
+    1040:   STW 0x4(R0),R4          5
+    1044:   ADDI R5,R5,0xEDA        6
+    1048:   JUMP 0x1020             7
 
-103C:   ADDI R5,R5,0xFEA            4
+104C:   ADDI R5,R5,0xFEA            0
+        NOP
+                                
+
+CODE THREAD 1
+-----------------------
+1080:   ADDI R0,R0,0x10DF   # @data  
+1084:   ADDI R1,R1,0x0      # iter
+1088:   ADDI R2,R2,0x2      # num iter - 1
+108C:   ADDI R4,R4,0xEDA    
+1090:   BEQ  R5,R4,0x1500   # TODO CHANGE jump to NOPs as we have finished
+
+#loop                             
+    1094:   BGT R1,R2,0x10AC   
+    1098:   LDW R3,0(R0)       
+    109C:   ADD R3,R3,R2       
+    10A0:   STB 0(R0),R3       
+    10A4:   ADDI R1,R1,0x1     
+    10A8:   JUMP 0x1094        
+
+10AC:   BLT R1,R2,0x10BC       
+    10B0:   STW 0x4(R0),R4     
+    10B4:   ADDI R5,R5,0xEDA   
+    10B8:   JUMP 0x1090        
+
+10BC:   ADDI R5,R5,0xFEA       
         NOP
     
 What does this check: 
-    - Initialize memory (0x1080) to 0x00000000
+    - Initialize memory (0x1060) to 0x00000000
+    - Initialize memory (0x10E0) to 0x00000000
     - Ensure that BEQ, BGT and BNE work and we do not always jump
     - Check that instructions are cancelled if we jump, otherwise we should execute 
       BNE (PC: 0x102C) 2 times instead of 1
     - Check that branches do not write on the RF (wb_rf_we = 0)
 
 - If evertyhing goes as expected we should see the next values on the registers:
-        - R0 = 0x1080
+        - R0 = 0x1060 (thread 0) ; 0x10E0 (thread 1)
         - R1 = 0x3
         - R2 = 0x2
         - R3 = 0x6
         - R4 = 0xEDA
         - R5 = 0xEDA -- if R5 = 0xFEA instead of EDA something went wrong with JUMP on PC 0x1038
-        - mm[0x1080] = 0x6
-        - mm[0x1084] = 0xEDA
-        
+        - mm[0x1060] = 0x6
+        - mm[0x1064] = 0xEDA
+        - mm[0x10E0] = 0x6
+        - mm[0x10E4] = 0xEDA 
+
+In addition, thread 0 R30 should be set to 0xEDA.
 
 Result: Working as expected                  
                                
