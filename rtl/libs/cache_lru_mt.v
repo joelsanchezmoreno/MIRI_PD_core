@@ -59,7 +59,7 @@ generate
             if (victim_req && victim_set == gen_it )
             begin
                 max_count = '0;
-                victim_per_set[gen_it] = '0;
+                victim_per_set[gen_it] = thread_id * NUM_WAYS_PER_SET_MT;
               
                 // If Single Threaded then we look all the ways
                 if (mt_mode == Single_Threaded)

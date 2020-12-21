@@ -318,17 +318,17 @@ begin
     logic update_ff;
     assign update_ff = (thread_id == pp);
 
-        //      CLK   RST                    EN                           DOUT                   DIN                       DEF
-    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff & rob_blocks_src1, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
-    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff & rob_blocks_src2, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
-    
-    //     CLK    EN         DOUT                DIN
+        // CLK    EN         DOUT                DIN
     `EN_FF(clock, update_ff, rob_src1_id_ff[pp], rob_src1_id)
     `EN_FF(clock, update_ff, rob_src2_id_ff[pp], rob_src2_id)
 
-    //     CLK   EN                     DOUT                   DIN
-    `EN_FF(clock, update_rob_data1[pp], rob_src1_data_ff[pp], (rob_src1_hit & update_ff) ? rob_src1_data: writeValRF)
-    `EN_FF(clock, update_rob_data2[pp], rob_src2_data_ff[pp], (rob_src2_hit & update_ff) ? rob_src2_data: writeValRF)
+        // CLK   EN                     DOUT                   DIN
+    `EN_FF(clock, update_rob_data1[pp], rob_src1_data_ff[pp], (rob_src1_hit & pp == rob_thread_id) ? rob_src1_data: writeValRF)
+    `EN_FF(clock, update_rob_data2[pp], rob_src2_data_ff[pp], (rob_src2_hit & pp == rob_thread_id) ? rob_src2_data: writeValRF)
+    
+        //      CLK   RST                    EN                    DOUT                   DIN                       DEF
+    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff | update_rob_data1[pp], rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
+    `RST_EN_FF(clock, reset | flush_alu[pp], update_ff | update_rob_data2[pp], rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
 end
 endgenerate
 
@@ -345,7 +345,7 @@ begin
         rob_blocks_src1 = req_alu_info.rob_blocks_src1;
         rob_blocks_src2 = req_alu_info.rob_blocks_src2;
     end
-    else if (stall_decode_ff[thread_id]) //TODO: Should be pendent request not stall_decode_ff in case of multithreading
+    else if (stall_decode_ff[thread_id])
     begin
         rob_src1_id = rob_src1_id_ff[thread_id];
         rob_src2_id = rob_src2_id_ff[thread_id];

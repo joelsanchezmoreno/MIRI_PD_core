@@ -43,6 +43,7 @@ fetch_xcpt_t                xcpt_fetch_to_decode;
 
 /////////////////////////////////////////
 // Decode signals to other stages
+logic [`THR_PER_CORE-1:0] decode_stall_fetch;
 
 // Request to ALU
 logic                               req_to_alu_valid;
@@ -211,7 +212,8 @@ fetch_top
     .branch_pc          ( branch_pc             ),
 
     // Stop fetching instructions
-    .stall_fetch        (  alu_stall_pipeline  
+    .stall_fetch        (  decode_stall_fetch
+                         | alu_stall_pipeline  
                          | mul_stall_pipeline
                          | reorder_buffer_full  
                          | wb_flush_pipeline    ),
@@ -261,6 +263,7 @@ decode_top
     .iret_instr         ( alu_iret_instr        ),
 
     // Stall pipeline
+    .stall_fetch        ( decode_stall_fetch    ),
     .stall_decode       (  alu_stall_pipeline
                          | mul_stall_pipeline
                          | reorder_buffer_full  ),

@@ -185,7 +185,8 @@ typedef enum logic [2:0] {
    evict_line       = 3'b001, 
    bring_line       = 3'b010, 
    write_cache_line = 3'b011,
-   pendent_request  = 3'b100
+   pendent_request  = 3'b100,
+   wait_until_active= 3'b101
 } dcache_state_t;
 
 typedef enum logic [0:0] {

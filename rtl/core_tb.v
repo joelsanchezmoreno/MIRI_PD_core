@@ -215,6 +215,7 @@ begin
             pop_icache_fifo         = 1'b1;
             req_mm_info             = icache_pop_info;
             req_mm_info_is_dcache   = 1'b0;
+            order_fifo_pendant_request = 1'b0;
         end
         else // No pendent requests
         begin
@@ -331,6 +332,11 @@ begin
     `endif
 end
 
+logic [5:0] full_nops_counter;
+logic [5:0] full_nops_counter_ff;
+//  CLK    DOUT                   DIN
+`FF(clk_i, full_nops_counter_ff, full_nops_counter)
+
 always_ff @(posedge clk_i) 
 begin
     /*
@@ -358,21 +364,31 @@ begin
         end
     end
     */
-    if ( rsp_mm_data == '1 & rsp_mm_valid & !req_mm_info_is_dcache_ff)
+    if(reset_i)
+        full_nops_counter = '0;
+    else
     begin
-        $display("[CORE TB] Finishing simulation, we found all NOPs on memory");
+        full_nops_counter = full_nops_counter_ff;
+        if ( rsp_mm_data == '1 & rsp_mm_valid & !req_mm_info_is_dcache_ff)
+        begin
+            full_nops_counter = full_nops_counter_ff + 1;
+            if (full_nops_counter_ff == 3)
+            begin
+                $display("[CORE TB] Finishing simulation, we found all NOPs on memory");
 
-        `ifndef MATRIX_MULTIPLY_TEST
-            for (iter_out = `MM_BOOT_ADDR; iter_out < `MAIN_MEMORY_DEPTH; iter_out++)
-                $fwrite(out_file,"%h\n", main_memory[iter_out]);
-        `else
-            for (iter_out = `MM_BOOT_ADDR; iter_out < `MAIN_MEMORY_DEPTH; iter_out++)
-            //for (iter_out = `MATRIX_C_ADDR; iter_out < `MATRIX_A_ADDR; iter_out++)
-                $fwrite(out_file,"%h\n", main_memory[iter_out]);
-        `endif
-        $fclose(out_file);
+                `ifndef MATRIX_MULTIPLY_TEST
+                    for (iter_out = `MM_BOOT_ADDR; iter_out < `MAIN_MEMORY_DEPTH; iter_out++)
+                        $fwrite(out_file,"%h\n", main_memory[iter_out]);
+                `else
+                    for (iter_out = `MM_BOOT_ADDR; iter_out < `MAIN_MEMORY_DEPTH; iter_out++)
+                    //for (iter_out = `MATRIX_C_ADDR; iter_out < `MATRIX_A_ADDR; iter_out++)
+                        $fwrite(out_file,"%h\n", main_memory[iter_out]);
+                `endif
+                $fclose(out_file);
 
-        $finish;
+                $finish;
+            end
+        end
     end
 end
 

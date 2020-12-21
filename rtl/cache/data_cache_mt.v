@@ -234,6 +234,20 @@ logic [`THR_PER_CORE-1:0][`DCACHE_TAG_RANGE]    req_tag   ;
 req_size_t [`THR_PER_CORE-1:0]                  req_size  ;
 
 
+logic [`THR_PER_CORE-1:0][`DCACHE_MAX_ACC_SIZE-1:0] rsp_data_next;
+logic [`THR_PER_CORE-1:0][`DCACHE_MAX_ACC_SIZE-1:0] rsp_data_ff;
+logic [`THR_PER_CORE-1:0] rsp_data_en;
+
+//     CLK    EN           DOUT         DIN
+genvar p;
+generate for (p=0; p < `THR_PER_CORE; p++) 
+begin
+    //     CLK    EN              DOUT            DIN
+    `EN_FF(clock, rsp_data_en[p], rsp_data_ff[p], rsp_data_next[p])
+end
+endgenerate
+
+
 //////////////////////////////////////////////////
 // Logic
 
@@ -281,6 +295,8 @@ begin
         // Response to core
     rsp_valid       = 1'b0;
     dcache_tags_hit = 1'b0;
+    rsp_data_en     = '0;
+    rsp_data_next   = rsp_data_ff;
 
     // Mantain values for next clock
     for (thread_id=0; thread_id < `THR_PER_CORE; thread_id++) 
@@ -499,6 +515,7 @@ begin
                                         // asks for the same line, we block it
                                         blocked_by_thread_tag[thread_id]    = req_tag[thread_id];
                                         blocked_by_thread_valid[thread_id]  = 1'b1;
+                                        blocked_by_thread_id[thread_id]     = thread_id;
 
                                         // Next stage
                                         pending_req[thread_id]     = req_info;                    
@@ -523,6 +540,7 @@ begin
                                         // asks for the same line, we block it
                                         blocked_by_thread_tag[thread_id]    = req_tag[thread_id];
                                         blocked_by_thread_valid[thread_id]  = 1'b1;
+                                        blocked_by_thread_id[thread_id]     = thread_id;
 
                                         // Next stage
                                         pending_req[thread_id]  = req_info;                    
@@ -662,8 +680,14 @@ begin
                     end 
 
                     // Next stage
-                    dcache_ready_next[thread_id]   = 1'b1;
-                    dcache_state[thread_id]        = idle;
+                    dcache_ready_next[thread_id]   = (thread_id == active_thread_id);
+                    dcache_state[thread_id]        = (thread_id == active_thread_id) ? idle : wait_until_active;
+                    rsp_data_en[thread_id]         = (thread_id != active_thread_id);
+                    if ( req_size[thread_id] == Byte)
+                        rsp_data_next[thread_id]  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE,rsp_data_miss[`GET_LOWER_BOUND(`BYTE_BITS,req_offset[thread_id])+:`BYTE_BITS]);
+                    else
+                        rsp_data_next[thread_id]  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data_miss[`GET_LOWER_BOUND(`DWORD_BITS,req_offset[thread_id])+:`DWORD_BITS]);
+
                 end //!rsp_valid_miss
             end
 
@@ -805,6 +829,23 @@ begin
                     dcache_state[thread_id] = dcache_state_aux_ff[thread_id];
                 else
                     dcache_state[thread_id] = pendent_request;
+            end
+
+            // This state is executed when the thread was ready to response to
+            // the core because it was waiting for a resp from memory, but
+            // could not respond on that cycle because it was not the active
+            // thread
+            wait_until_active:
+            begin 
+                if (thread_id == active_thread_id)       
+                begin
+                    // Next stage
+                    rsp_valid = 1'b1;
+                    rsp_data  = rsp_data_ff[thread_id];
+                    
+                    dcache_ready_next[thread_id]   = 1'b1;
+                    dcache_state[thread_id]        = idle;
+                end
             end
         endcase
     end // for (thread_id=0; thread_id < `THR_PER_CORE; thread_id++)

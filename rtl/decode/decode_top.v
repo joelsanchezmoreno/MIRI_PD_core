@@ -12,6 +12,7 @@ module decode_top
     input   logic                               change_core_mode,
 
     // Stall pipeline
+    output  logic   [`THR_PER_CORE-1:0]         stall_fetch,
     input   logic   [`THR_PER_CORE-1:0]         stall_decode,
     input   logic   [`THR_PER_CORE-1:0]         flush_decode,
     input   logic   [`THR_PER_CORE-1:0]         flush_rob,
@@ -57,6 +58,7 @@ module decode_top
     input   xcpt_type_t                         xcpt_type,
     input   logic   [`THR_PER_CORE_WIDTH-1:0]   xcpt_thread_id
 );
+
 logic   [`THR_PER_CORE_WIDTH-1:0]   thread_id;
 assign thread_id = fetch_thread_id;
 
@@ -156,6 +158,7 @@ endgenerate
 /////////////////////////////////////////
 // Control logic for requests to be sent to ALU
 logic [`THR_PER_CORE-1:0] saved_request_alu;
+assign stall_fetch = saved_request_alu;
 
 assign req_to_alu_valid_next =  ( flush_decode[thread_id]       ) ? 1'b0       : // Invalidate instruction
                                 ( stall_decode[thread_id]       ) ? 1'b0       :
