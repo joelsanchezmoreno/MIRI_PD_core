@@ -23,7 +23,6 @@ module data_cache_mt
 
     // Response to the core pipeline
     output  logic [`DCACHE_MAX_ACC_SIZE-1:0]    rsp_data,
-    output  logic                               rsp_error, //conditional error
     output  logic                               rsp_valid,
 
     // Request to the memory hierarchy
@@ -73,6 +72,29 @@ arb_prio_mm
 assign req_valid_miss = req_valid_miss_active_thread | (|req_valid_miss_arb);
 assign req_info_miss  = (req_valid_miss_active_thread) ? req_info_miss_arb[active_thread_id] :
                                                          req_info_miss_arb[arb_winner_ff];
+
+///////////////////////////////////
+// Response to Cache stage management
+
+logic                      rsp_valid_active_thread;
+logic [`THR_PER_CORE-1:0]  rsp_valid_threads;
+
+logic [`THR_PER_CORE_WIDTH-1:0] arb_winner_rsp_valid;
+
+arbiter_priority
+#(.NUM_ENTRIES(`THR_PER_CORE))
+arb_prio_rsp_valid
+(
+    .client_valid   ( rsp_valid_threads     ),
+    .top_client     ( active_thread_id      ),  // give priority to active thread
+    .client_ready   (                       ),  // threads always ready to send req
+    .winner         ( arb_winner_rsp_valid  ),
+    
+    .valid          (                       ),
+    .ready          ( 1'b1                  )
+);
+
+assign rsp_valid = (|rsp_valid_threads);                                                    
 
 ///////////////////////////////////
 // Thread waits for a request from another thread
@@ -236,14 +258,17 @@ req_size_t [`THR_PER_CORE-1:0]                  req_size  ;
 
 logic [`THR_PER_CORE-1:0][`DCACHE_MAX_ACC_SIZE-1:0] rsp_data_next;
 logic [`THR_PER_CORE-1:0][`DCACHE_MAX_ACC_SIZE-1:0] rsp_data_ff;
+logic [`THR_PER_CORE-1:0] rsp_bus_error_next;
+logic [`THR_PER_CORE-1:0] rsp_bus_error_ff;
 logic [`THR_PER_CORE-1:0] rsp_data_en;
 
 //     CLK    EN           DOUT         DIN
 genvar p;
 generate for (p=0; p < `THR_PER_CORE; p++) 
 begin
-    //     CLK    EN              DOUT            DIN
-    `EN_FF(clock, rsp_data_en[p], rsp_data_ff[p], rsp_data_next[p])
+    //     CLK    EN              DOUT                 DIN
+    `EN_FF(clock, rsp_data_en[p], rsp_data_ff[p],      rsp_data_next[p])
+    `EN_FF(clock, rsp_data_en[p], rsp_bus_error_ff[p], rsp_bus_error_next[p])
 end
 endgenerate
 
@@ -293,10 +318,10 @@ begin
     xcpt_store_cond = 1'b0;
 
         // Response to core
-    rsp_valid       = 1'b0;
     dcache_tags_hit = 1'b0;
     rsp_data_en     = '0;
     rsp_data_next   = rsp_data_ff;
+    rsp_bus_error_next = rsp_bus_error_ff;
 
     // Mantain values for next clock
     for (thread_id=0; thread_id < `THR_PER_CORE; thread_id++) 
@@ -304,6 +329,8 @@ begin
         case(dcache_state_ff[thread_id])
             idle:
             begin
+                rsp_valid_threads[thread_id] = 1'b0;
+
                 req_valid_miss_arb[thread_id]  = 1'b0;
                 dcache_ready_next[thread_id] = !store_buffer_full;
               
@@ -363,7 +390,7 @@ begin
 
                             //FIXME.TODO. Merge requests if there are more on the store buffer
                             //            with same tag?
-                            rsp_valid = 1'b1;
+                            rsp_valid_threads[thread_id] = 1'b1;
                             store_buffer_push_info.addr = req_info.addr;
                             store_buffer_push_info.way  = hit_way;
                             store_buffer_push_info.size = req_info.size;
@@ -378,7 +405,7 @@ begin
                         // for this thread. Return error.
                         else 
                         begin
-                            rsp_valid       = 1'b1;
+                            rsp_valid_threads[thread_id] = 1'b1;
                             xcpt_store_cond = 1'b1;
                             rsp_data        = '1;
                         end
@@ -413,7 +440,7 @@ begin
                                 req_offset[thread_id]  = req_info.addr[`DCACHE_OFFSET_ADDR_RANGE] >> $clog2(req_info.size+1);
                                 rsp_data  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, dCache_data[req_target_pos[thread_id]][`GET_LOWER_BOUND(`DWORD_BITS,req_offset[thread_id])+:`DWORD_BITS]);
                             end
-                            rsp_valid = 1'b1;
+                            rsp_valid_threads[thread_id] = 1'b1;
                         end
                         // If there is a store request on the store buffer that
                         // modifies the same line, we should perform the store before
@@ -448,7 +475,7 @@ begin
                                 if(  !dCache_reserved_valid_ff[req_target_pos[thread_id]]
                                    | dCache_reserved_way_ff[req_target_pos[thread_id]] != thread_id)
                                 begin
-                                    rsp_valid       = 1'b1;
+                                    rsp_valid_threads[thread_id] = 1'b1;
                                     xcpt_store_cond = 1'b1;
                                     rsp_data        = '1;
                                     dcache_ready_next[thread_id]   = 1'b1;
@@ -468,6 +495,7 @@ begin
                                begin
                                    blocked_by_thread_id[thread_id] = thr;
                                    dcache_state[thread_id] = bring_line;
+                                   pending_req[thread_id]   = req_info;
                                end
                             end
                             // If we found that we're blocked by another thread,
@@ -586,6 +614,7 @@ begin
             // to get the new line.
             evict_line:
             begin
+                rsp_valid_threads[thread_id] = 1'b0;
                 req_valid_miss_arb[thread_id] = 1'b0;
 
                 // Wait for response from memory ACK
@@ -607,6 +636,7 @@ begin
             // dcache_top
             bring_line:
             begin
+                rsp_valid_threads[thread_id] = 1'b0;
                 // We wait until we receive the response from main memory. 
                 req_valid_miss_arb[thread_id] = 1'b0;
 
@@ -618,30 +648,32 @@ begin
                 begin                  
                     dcache_ready_next[thread_id]   = (thread_id == active_thread_id);
                     dcache_state[thread_id]        = (thread_id == active_thread_id) ? idle : wait_until_active;
-                    rsp_valid                      = (thread_id == active_thread_id);
+                    rsp_valid_threads[thread_id]   = (thread_id == active_thread_id);
                     rsp_data_en[thread_id]         = (thread_id != active_thread_id);
-                    if ( req_size[thread_id] == Byte)
+                    req_size[thread_id]            = pending_req_ff[thread_id].size;
+                    rsp_bus_error_next[thread_id]  = (thread_id != active_thread_id) ? rsp_bus_error : '0;
+                    if (req_size[thread_id] == Byte)
                     begin
                         req_offset[thread_id] = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE];
                         rsp_data_next[thread_id]  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE,rsp_data_miss[`GET_LOWER_BOUND(`BYTE_BITS,req_offset[thread_id])+:`BYTE_BITS]);
                     end
                     else
                     begin
-                        req_offset[thread_id] = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE]  >> $clog2(pending_req_ff[thread_id].size+1);
+                        req_offset[thread_id] = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE]  >> $clog2(req_size[thread_id]+1);
                         rsp_data_next[thread_id]  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data_miss[`GET_LOWER_BOUND(`DWORD_BITS,req_offset[thread_id])+:`DWORD_BITS]);
                     end
                 end
 
                 // Update the tag, data and valid information for the position related to that
                 // tag
-                if (  rsp_valid_miss & (thread_id == rsp_thread_id))
+                if ( rsp_valid_miss & (thread_id == rsp_thread_id))
                 begin
                     // Clear pendent request addr since thread_id has received the data and
                     // will write it into memory
                     blocked_by_thread_valid[thread_id]  = 1'b0;
 
                     xcpt_bus_error = rsp_bus_error;
-                    rsp_valid      = (thread_id == active_thread_id);
+                    rsp_valid_threads[thread_id]   = (thread_id == active_thread_id);
                     if (!rsp_bus_error)
                     begin
                         // Compute signals from the pending ST request
@@ -692,8 +724,10 @@ begin
                     end 
 
                     // Next stage
+                    rsp_valid_threads[thread_id]   = (thread_id == active_thread_id);
                     dcache_ready_next[thread_id]   = (thread_id == active_thread_id);
                     dcache_state[thread_id]        = (thread_id == active_thread_id) ? idle : wait_until_active;
+                    rsp_bus_error_next[thread_id]  = (thread_id != active_thread_id) ? rsp_bus_error : '0;
                     rsp_data_en[thread_id]         = (thread_id != active_thread_id);
                     if ( req_size[thread_id] == Byte)
                         rsp_data_next[thread_id]  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE,rsp_data_miss[`GET_LOWER_BOUND(`BYTE_BITS,req_offset[thread_id])+:`BYTE_BITS]);
@@ -711,6 +745,7 @@ begin
             //     stores on the store_buffer for the line we want to replace.
             write_cache_line:
             begin
+                rsp_valid_threads[thread_id] = 1'b0;
                 req_valid_miss_arb[thread_id] = 1'b0;
                 dcache_ready_next[thread_id] = 1'b0;
                 // If there is a pending ST req. on the store buffer. Then, we should modify
@@ -786,12 +821,23 @@ begin
                                         rsp_data  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data[`DWORD_RANGE]);
                                     end
                                 end
-                                rsp_valid = (thread_id == active_thread_id);
+                                rsp_valid_threads[thread_id]   = (thread_id == active_thread_id);
+                                rsp_data_en[thread_id]         = (thread_id != active_thread_id);
+                                if ( req_size[thread_id] == Byte)
+                                begin
+                                    rsp_data_next[thread_id]  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size+1)*`BYTE_BITS*req_offset[thread_id]) ;
+                                    rsp_data_next[thread_id]  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE, rsp_data[`BYTE_RANGE]);
+                                end
+                                else
+                                begin
+                                    rsp_data  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size+1)*`BYTE_BITS*req_offset[thread_id]) ;
+                                    rsp_data  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data[`DWORD_RANGE]);
+                                end
                             end
                     
                             // Next stage 
-                            dcache_ready_next[thread_id]   = 1'b1;                    
-                            dcache_state[thread_id]        = idle;
+                            dcache_ready_next[thread_id]   = (thread_id == active_thread_id);
+                            dcache_state[thread_id]        = (thread_id == active_thread_id) ? idle : wait_until_active;
                         end 
                         //Otherwise, if we were updating the line before an evict, we
                         //send the evict request
@@ -821,6 +867,7 @@ begin
             // request and move to the next state
             pendent_request:
             begin
+                rsp_valid_threads[thread_id] = 1'b0;
                 req_valid_miss_arb[thread_id]  = 1'b1;
                 if (dcache_state_aux_ff[thread_id] == evict_line)
                 begin                
@@ -848,13 +895,17 @@ begin
             // thread
             wait_until_active:
             begin 
+                rsp_valid_threads[thread_id] = 1'b0;
                 if (thread_id == active_thread_id)       
                 begin
                     // Next stage
-                    rsp_valid = 1'b1;
+                    rsp_valid_threads[thread_id] = 1'b1;
                     rsp_data  = rsp_data_ff[thread_id];
                     
+                    xcpt_bus_error = rsp_bus_error_ff[thread_id];
+                    rsp_bus_error_next[thread_id]  = 1'b0;
                     dcache_ready_next[thread_id]   = 1'b1;
+                    rsp_data_en[thread_id]         = 1'b1;
                     dcache_state[thread_id]        = idle;
                 end
             end
