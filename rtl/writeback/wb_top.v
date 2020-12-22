@@ -81,10 +81,17 @@ module wb_top
     output  logic [`REG_FILE_DATA_RANGE]        alu_src2_data
 );
 
+logic [`THR_PER_CORE-1:0]  invalidate_buffer_next;
 logic [`THR_PER_CORE-1:0]  invalidate_buffer;
 
+always_comb
+begin
+    invalidate_buffer_next                 = '0;
+    invalidate_buffer_next[xcpt_thread_id] = xcpt_valid;
+end
+
 //      CLK    RST    DOUT               DIN         DEF
-`RST_FF(clock, reset, invalidate_buffer, xcpt_valid , '0)
+`RST_FF(clock, reset, invalidate_buffer, invalidate_buffer_next , '0)
 
 reorder_buffer
 reorder_buffer
