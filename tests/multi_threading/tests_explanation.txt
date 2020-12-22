@@ -496,7 +496,7 @@ Test name: xcpt_handler_tlb.hex
 1000:   GETID   R0              
 1004:   BNE     R0,R1,0x1010    
 1008:   CHGMODE                 
-100C:   ADDI    R30,R30,0xEDA   
+100C:   ADDI    R31,R31,0xEDA   
    
 #########
 ### Code to generate the xcpt
