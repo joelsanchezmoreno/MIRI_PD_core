@@ -262,27 +262,32 @@ Result: Working as expected
 
 Test name: xcpt_illegal_instruction.hex
 
-# mem[0x1008+0x30] -- initial value 0xCBAE05FA
+# mem[0x1018+0x30] -- initial value 0xCBAE05FA
 # mem[0x2000] -- initial value 0x07EF7DA1
 
-1000:   ADDI R0,R0,0x7          0
-1004:   ADDI R1,R1,0x3          1
-1008:   ADD  R2,R0,R1           2
-100C:   ADDI R3,R3,0x1008       3
+1000:   GETID   R0              0 0
+1004:   BNE     R0,R1,0x1010    1 1
+1008:   CHGMODE                 2 
+100C:   ADDI    R30,R30,0xEDA   3
+    
+1010:   ADDI R0,R0,0x7          4 2
+1014:   ADDI R1,R1,0x3          5 3
+1018:   ADD  R2,R0,R1           6 4
+101C:   ADDI R3,R3,0x1018       7 5
 
-1010:   LDW  R5,0x30(R3)        4   # R5 = 0xCBAE05FA
-1014:   STW  0x30(R3),R2        5   # mem[0x1008+0x30] = 0x0000 0000A
-1018:   LDW  R4,0x30(R3)        6   # R4 = mem[0x1008+0x30]
-101C:   ADD  R5,R5,R4           7   # R5 = R5 + R4 =  0xCBAE05FA + 0xA = 0xCBAE0604  
+1020:   LDW  R5,0x30(R3)        0 6 # R5 = 0xCBAE05FA
+1024:   STW  0x30(R3),R2        1 7 # mem[0x1018+0x30] = 0x0000 0000A
+1028:   LDW  R4,0x30(R3)        2 0 # R4 = mem[0x1018+0x30]
+102C:   ADD  R5,R5,R4           3 1 # R5 = R5 + R4 =  0xCBAE05FA + 0xA = 0xCBAE0604  
 
-1020:   STB  0x32(R3),R1        0   # mem[0x1008+0x30] = 0x0003 000A
-1024:   STB  0x31(R3),R0        1   # mem[0x1008+0x30] = 0x0003 070A
-1028:   STW  0x4C(R3),R2        2   # mem[0x1008+0x4C] = 0x0000 000A
-102C:   STW  0x68(R3),R3        3   # mem[0x1008+0x68] = 0x0000 1008
+1030:   STB  0x32(R3),R1        4 2 # mem[0x1018+0x30] = 0x0003 000A
+1034:   STB  0x31(R3),R0        5 3 # mem[0x1018+0x30] = 0x0003 070A
+1038:   STW  0x4C(R3),R2        6 4 # mem[0x1018+0x4C] = 0x0000 000A
+103C:   STW  0x68(R3),R3        7 5 # mem[0x1018+0x68] = 0x0000 1018
 
-1030:   - illegal opcode -      4
+1040:   - illegal opcode -      0 6
 
-2000:   ADDI R30,R30,0x7DA1     0
+2000:   ADDI R30,R30,0x7DA1     1 7
 
 What does this check: 
     - Initialize memory (0x1038) to 0xCBAE05FA 
@@ -293,18 +298,18 @@ What does this check:
       to force fetch to take a branch to exception handler at PC 0x2000.
 
 - If evertyhing goes as expected we should see the next values on the registers:
-        - R0 = 0x7
+        - R0 = 0x7 (thread 0); 0x8 (thread 1)
         - R1 = 0x3
-        - R2 = 0xA
-        - R3 = 0x1008
-        - R4 = 0xA
-        - R5 = 0xCBAE0604
-        - R30 = 0x7DA1
+        - R2 = 0xA (thread 0); 0xB (thread 1)
+        - R3 = 0x1018
+        - R4 = 0xCBAE05FA
+        - R5 = 0xCBAE05FA (thread 0) ; 0x0 (thread 1)
+        - R30 = 0x8C7B (thread 0) ; 0x7DA1 (thread 1)
         - mm[0x1080] = compute
         - mm[0x1084] = 0xEDA
         - mm[0x1038] = 0x0003070A
         - mm[0x1054] = 0x0000000A
-        - mm[0x1070] = 0x00001008
+        - mm[0x1070] = 0x00001018
 
 Result: Working as expected                  
 
@@ -315,22 +320,27 @@ Test name: xcpt_mul_overflow.hex
 
 # mem[0x2000] -- initial value 0x07EF7DA1
 
-1000:   ADDI R0,R0,0x7FFF       0
-1004:   MUL  R0,R0,R0           1
-1008:   ADDI R1,R1,0x7FFF       2
-100C:   MUL  R1,R1,R1           3
-1010:   MUL  R2,R0,R1           4
+1000:   GETID   R0              0 0
+1004:   BNE     R0,R1,0x1010    1 1
+1008:   CHGMODE                 2 
+100C:   ADDI    R30,R30,0xEDA   3
+    
+1010:   ADDI R0,R0,0x7FFF       4
+1014:   MUL  R0,R0,R0           5
+1018:   ADDI R1,R1,0x7FFF       6
+101C:   MUL  R1,R1,R1           7
+1020:   MUL  R2,R0,R1           0
 
-2000:   ADDI R30,R30,0x7DA1     5
+2000:   ADDI R30,R30,0x7DA1     1
     
 What does this check: 
     - We have written memory address position 0x2000 with an ADDI instruction.
     - The MUL will raise an overflow exception. Then, a branch to adress 0x2000 will be taken.
  
 - If evertyhing goes as expected we should see the next values on the registers:
-        - R0 = 0x3FFF0001
+        - R0 = 0x3FFF0001 (thread 0) ; 0x40000000 (thread 1)
         - R1 = 0x3FFF0001
-        - R30 = 0x7DA1
+        - R30 = 0x8C7B (thread 0) ; 0x7DA1 (thread 1)
 
 Result: Working as expected                  
 
@@ -341,13 +351,18 @@ Test name: xcpt_add_overflow.hex
 
 # mem[0x2000] -- initial value 0x07EF7DA1
 
-1000:   ADDI R0,R0,0x7FFF       0
-1004:   MUL  R0,R0,R0           1
-1008:   ADD  R0,R0,R0           2
-100C:   ADD  R0,R0,R0           3
-1010:   ADD  R0,R0,R0           4
+1000:   GETID   R0              0 0
+1004:   BNE     R0,R1,0x1010    1 1
+1008:   CHGMODE                 2 
+100C:   ADDI    R30,R30,0xEDA   3
+    
+1010:   ADDI R0,R0,0x7FFF       4
+1014:   MUL  R0,R0,R0           5
+1018:   ADD  R0,R0,R0           6
+101C:   ADD  R0,R0,R0           7
+1020:   ADD  R0,R0,R0           0
 
-2000:   ADDI R30,R30,0x7DA1     5
+2000:   ADDI R30,R30,0x7DA1     1
     
 What does this check: 
     - We have written memory address position 0x2000 with an ADDI instruction. 
@@ -355,9 +370,9 @@ What does this check:
  
 - If evertyhing goes as expected we should see the next values on the registers:
         - R0 = 0xFFFC0004
-        - R30 = 0x7DA1
+        - R30 = 0x8C7B (thread 0) ; 0x7DA1 (thread 1)
 
-Result:                   
+Result: Working as expected           
 
 ///////////////////////////////////////////////////////////////////////////
 // EXCEPTIONS ADDI OVERFLOW
@@ -366,10 +381,15 @@ Test name: xcpt_addi_overflow.hex
 
 # mem[0x2000] -- initial value 0x07EF7DA1
 
-1000:   LD R0,0x1030(R0)        0
-1004:   ADDI R1,R1,0x1          1
+1000:   GETID   R0              0 0
+1004:   BNE     R0,R1,0x1010    1 1
+1008:   CHGMODE                 2 
+100C:   ADDI    R30,R30,0xEDA   3
+    
+1000:   LD R0,0x1030(R0)        4
+1004:   ADDI R1,R1,0x1          5
 
-2000:   ADDI R30,R30,0x7DA1     2
+2000:   ADDI R30,R30,0x7DA1     6
     
 What does this check: 
     - We have written memory address position 0x2000 with an ADDI instruction.

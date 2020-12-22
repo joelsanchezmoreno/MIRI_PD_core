@@ -250,7 +250,7 @@ What does this check:
         - R0 = 0xFFFC0004
         - R30 = 0x7DA1
 
-Result:                   
+Result: Working as expected                  
 
 ///////////////////////////////////////////////////////////////////////////
 // EXCEPTIONS ADDI OVERFLOW
@@ -511,7 +511,7 @@ NOP
         - R3 = 0x80
         - R4 = 0x80
 	- mem[0x1080:0x1280] = 0:127
-Result:
+Result:Working as expected
 ///////////////////////////////////////////////////////////////////////////
 // TEST MEMORY COPY
 
@@ -556,4 +556,4 @@ int main() {
         - R8 = 0x1480
         - mem[0x1080:0x1280] = 5
 	- mem[0x1280:0x1492] = 5
-Result:
+Result:Working as expected
