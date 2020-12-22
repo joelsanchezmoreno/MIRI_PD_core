@@ -25,6 +25,12 @@ static void usage(char *argv[])
 
 static coreTB *core_tb;
 
+// Return the timeStamp private variable
+double sc_time_stamp(void)
+{
+	return core_tb->getTimeStamp();
+}
+
 // Main routine
 int main(int argc, char *argv[])
 {
