@@ -158,7 +158,6 @@ endgenerate
 /////////////////////////////////////////
 // Control logic for requests to be sent to ALU
 logic [`THR_PER_CORE-1:0] saved_request_alu;
-assign stall_fetch = saved_request_alu;
 
 assign req_to_alu_valid_next =  ( flush_decode[thread_id]       ) ? 1'b0       : // Invalidate instruction
                                 ( stall_decode[thread_id]       ) ? 1'b0       :
@@ -206,6 +205,7 @@ endgenerate
 /////////////////////////////////////////
 // Control logic for requests to be sent to MUL
 logic [`THR_PER_CORE-1:0] saved_request_mul;
+assign stall_fetch = saved_request_alu | saved_request_mul;
 
 assign req_to_mul_valid_next =  ( flush_decode[thread_id]       ) ? 1'b0         : // Invalidate instruction
                                 ( stall_decode[thread_id]       ) ? 1'b0         : // Stall the pipeline 
@@ -412,7 +412,7 @@ begin
     for (iter0=0; iter0 < `THR_PER_CORE; iter0++) 
     begin
         if( (  (req_to_alu_valid && req_to_alu_thread_id == iter0)
-             | (req_to_mul_valid && req_to_mul_instr_id== iter0)) 
+             | (req_to_mul_valid && req_to_mul_thread_id == iter0)) 
            & !flush_decode[iter0])
        begin
             reorder_buffer_tail_next[iter0] = reorder_buffer_tail_ff[iter0] + 1'b1;

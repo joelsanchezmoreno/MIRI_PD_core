@@ -46,11 +46,6 @@ module mul_top
 logic   [`THR_PER_CORE_WIDTH-1:0] thread_id;
 assign thread_id = req_mul_thread_id;
 
-logic [`THR_PER_CORE_WIDTH-1:0] previous_thread;
-
- // CLK    DOUT             DIN            
-`FF(clock, previous_thread, thread_id)
-
 /////////////////
 logic fetch_xcpt_valid_in;
 assign fetch_xcpt_valid_in = req_mul_valid &  
@@ -176,17 +171,17 @@ begin
     logic update_rob;
     assign update_rob = (pp == thread_id);
 
-        //      CLK   RST                    EN                            DOUT                   DIN                       DEF
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob & rob_blocks_src1, rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
-    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob & rob_blocks_src2, rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
-    
     //     CLK    EN          DOUT                DIN
     `EN_FF(clock, update_rob, rob_src1_id_ff[pp], rob_src1_id)
     `EN_FF(clock, update_rob, rob_src2_id_ff[pp], rob_src2_id)
 
     //     CLK   EN                     DOUT                   DIN
-    `EN_FF(clock, update_rob_data1[pp], rob_src1_data_ff[pp], (rob_src1_hit & update_ff) ? rob_src1_data: writeValRF)
-    `EN_FF(clock, update_rob_data2[pp], rob_src2_data_ff[pp], (rob_src2_hit & update_ff) ? rob_src2_data: writeValRF)
+    `EN_FF(clock, update_rob_data1[pp], rob_src1_data_ff[pp], (rob_src1_hit & pp == rob_thread_id) ? rob_src1_data: writeValRF)
+    `EN_FF(clock, update_rob_data2[pp], rob_src2_data_ff[pp], (rob_src2_hit & pp == rob_thread_id) ? rob_src2_data: writeValRF)
+
+        //      CLK   RST                    EN                                 DOUT                   DIN                       DEF
+    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob | update_rob_data1[pp], rob_src1_found_ff[pp], rob_src1_found_next[pp], 1'b0)
+    `RST_EN_FF(clock, reset | flush_mul[pp], update_rob | update_rob_data2[pp], rob_src2_found_ff[pp], rob_src2_found_next[pp], 1'b0)
 end
 endgenerate
 
@@ -203,7 +198,7 @@ begin
         rob_blocks_src1 = req_mul_info.rob_blocks_src1;
         rob_blocks_src2 = req_mul_info.rob_blocks_src2;
     end
-    else if (stall_decode_ff[thread_id]) //TODO: Should be pendent request not stall_decode_ff in case of multithreading
+    else if (stall_decode_ff[thread_id])
     begin
         rob_src1_id = rob_src1_id_ff[thread_id];
         rob_src2_id = rob_src2_id_ff[thread_id];
@@ -290,8 +285,8 @@ begin
         update_rob_data1[ll] = rob_blocks_src1 & rob_src1_hit & (thread_id == ll);
         update_rob_data2[ll] = rob_blocks_src2 & rob_src2_hit & (thread_id == ll);
 
-        // Check if there the thread RF being written is waiting for a value
-        if(writeEnRF && write_thread_idRF == ll)
+        // Check if the thread RF being written is waiting for a value
+        if(writeEnRF && write_thread_idRF == ll && stall_decode_ff[ll])
         begin
             // Check if the register being written is the one the thr was
             // waiting for
@@ -426,10 +421,15 @@ begin : gen_mul_stages
 end
 endgenerate
 
-logic                   req_wb_valid_next;
-writeback_request_t     req_wb_info_next;
-logic                   req_wb_valid_ff;
-writeback_request_t     req_wb_info_ff;
+logic                           req_wb_valid_next;
+writeback_request_t             req_wb_info_next;
+logic                           req_wb_valid_ff;
+writeback_request_t             req_wb_info_ff;
+logic [`THR_PER_CORE_WIDTH-1:0] previous_thread;
+
+ // CLK    DOUT             DIN            
+`FF(clock, previous_thread, mul_stage_thread_id)
+
 
     //  CLK    RST    DOUT             DIN                DEF
 `RST_FF(clock, reset, req_wb_valid_ff, req_wb_valid_next, '0)

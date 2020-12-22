@@ -616,8 +616,20 @@ begin
                     & blocked_by_thread_valid_ff[rsp_thread_id]
                     & (blocked_by_thread_id_ff[thread_id] == rsp_thread_id))
                 begin                  
-                    dcache_ready_next[thread_id]   = 1'b1;
-                    dcache_state[thread_id]        = idle;
+                    dcache_ready_next[thread_id]   = (thread_id == active_thread_id);
+                    dcache_state[thread_id]        = (thread_id == active_thread_id) ? idle : wait_until_active;
+                    rsp_valid                      = (thread_id == active_thread_id);
+                    rsp_data_en[thread_id]         = (thread_id != active_thread_id);
+                    if ( req_size[thread_id] == Byte)
+                    begin
+                        req_offset[thread_id] = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE];
+                        rsp_data_next[thread_id]  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE,rsp_data_miss[`GET_LOWER_BOUND(`BYTE_BITS,req_offset[thread_id])+:`BYTE_BITS]);
+                    end
+                    else
+                    begin
+                        req_offset[thread_id] = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE]  >> $clog2(pending_req_ff[thread_id].size+1);
+                        rsp_data_next[thread_id]  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data_miss[`GET_LOWER_BOUND(`DWORD_BITS,req_offset[thread_id])+:`DWORD_BITS]);
+                    end
                 end
 
                 // Update the tag, data and valid information for the position related to that
@@ -687,7 +699,6 @@ begin
                         rsp_data_next[thread_id]  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE,rsp_data_miss[`GET_LOWER_BOUND(`BYTE_BITS,req_offset[thread_id])+:`BYTE_BITS]);
                     else
                         rsp_data_next[thread_id]  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data_miss[`GET_LOWER_BOUND(`DWORD_BITS,req_offset[thread_id])+:`DWORD_BITS]);
-
                 end //!rsp_valid_miss
             end
 

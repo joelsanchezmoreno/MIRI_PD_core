@@ -185,9 +185,10 @@ assign req_dcache_valid_next = ( flush_alu[thread_id]       ) ? 1'b0 :
                                 | decode_xcpt_valid 
                                 | xcpt_alu.xcpt_overflow    ) ? 1'b0 : // in case of xcpt go to wb 
                                ( stall_decode[thread_id]    ) ? 1'b0 : 
-                               ( stall_decode_ff[thread_id] ) ? is_m_type_instr(req_alu_info_ff[thread_id].opcode) : 
                                ( req_alu_valid              ) ? dcache_mem_type :
-                               ( req_alu_valid_ff[thread_id]) ? dcache_mem_type_ff[thread_id] : 1'b0;
+                               ( stall_decode_ff[thread_id] ) ? (  req_alu_valid_ff[thread_id]
+                                                                 & is_m_type_instr(req_alu_info_ff[thread_id].opcode)) :
+                                                                1'b0;
 
 assign req_dcache_valid = (flush_alu[previous_thread]) ? 1'b0 : req_dcache_valid_ff;
 assign req_dcache_info  = req_dcache_info_ff;
