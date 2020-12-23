@@ -220,9 +220,9 @@ logic   [`THR_PER_CORE_WIDTH-1:0]   decode_thread_id_ff;
 
 assign decode_instr_valid_next = (  (take_branch[active_thread]) 
                                   | take_branch_ff[active_thread]) ? 1'b0:
-                                 (  xcpt_fetch.xcpt_itlb_miss
-                                  | xcpt_fetch.xcpt_bus_error) ? 1'b1:
-                                                                 icache_rsp_valid;
+                                 (  xcpt_itlb_miss
+                                  | xcpt_bus_error_aux           ) ? 1'b1:
+                                                                    icache_rsp_valid;
 
 //      CLK    RST    DOUT                   DIN                      DEF
 `RST_FF(clock, reset, decode_instr_valid_ff, decode_instr_valid_next, 1'b0)

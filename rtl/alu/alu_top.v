@@ -694,7 +694,7 @@ begin
     begin
         ra_data = (!stall_decode[thread_id] & req_alu_valid) ? req_alu_info.ra_data : req_alu_info_ff[thread_id].ra_data;
         branch_pc_next   = `ZX(`PC_WIDTH,ra_data);
-		take_branch_next =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid);
+        take_branch_next =  !stall_decode[thread_id] & (req_alu_valid | (req_alu_valid_ff[thread_id] & stall_decode_ff[thread_id]));
         iret_instr_next[thread_id] = !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid);
     end
     //GET_THREAD_ID

@@ -62,8 +62,8 @@
 `define TLB_ENTRIES_RANGE `TLB_ENTRIES-1:0
 
 `define TLB_NUM_SET         2
-`define TLB_NUM_WAYS        2
-`define TLB_WAYS_PER_SET    `TLB_NUM_SET/`TLB_NUM_WAYS
+`define TLB_NUM_WAYS        4
+`define TLB_WAYS_PER_SET    `TLB_NUM_WAYS/`TLB_NUM_SET
 
 `define TLB_NUM_SET_WIDTH   $clog2(`TLB_NUM_SET)
 

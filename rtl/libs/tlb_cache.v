@@ -137,7 +137,7 @@ assign update_way   = (req_valid & !tlb_miss  ) ? hit_way :
 
 // This module returns the oldest way accessed for a given set and updates the
 // the LRU logic when there's a hit on the TLB or we bring a new translation
-cache_lru_mt
+cache_lru_tlb_mt
 #(
     .NUM_SET       ( `TLB_NUM_SET       ),
     .NUM_WAYS      ( `TLB_NUM_WAYS      ),
@@ -149,11 +149,11 @@ tlb_lru
     .clock              ( clock             ),
     .reset              ( reset             ),
     .mt_mode            ( mt_mode           ),
-    .thread_id          ( req_thread_id     ),
 
     // Info to select the victim
     .victim_req         ( new_tlb_entry     ),
     .victim_set         ( req_addr_set      ),
+    .victim_thread_id   ( new_tlb_thread_id ),
 
     // Victim way
     .victim_way         ( victim_way        ),
@@ -162,6 +162,7 @@ tlb_lru
     .update_req         ( update_en         ),
     .update_set         ( req_addr_set      ),
     .update_way         ( update_way        ),
+    .update_thread_id   ( req_thread_id     ),
 
     // Update the LRU logic for a second thread
     // Not needed for TLB

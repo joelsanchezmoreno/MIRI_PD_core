@@ -385,10 +385,11 @@ begin
             req_to_RF_thread_id_next = oldest_thread;
 
             // Request to TLB
-            new_tlb_entry_next  =   alu_req_info.tlbwrite
-                                 & !alu_reorder_buffer_xcpt_info.valid;
-            new_tlb_id_next     = alu_req_info.tlb_id;
-            new_tlb_info_next   = alu_req_info.tlb_req_info; 
+            new_tlb_entry_next      =   alu_req_info.tlbwrite
+                                     & !alu_reorder_buffer_xcpt_info.valid;
+            new_tlb_id_next         = alu_req_info.tlb_id;
+            new_tlb_info_next       = alu_req_info.tlb_req_info; 
+            new_tlb_thread_id_next  = alu_thread_id;
 
             // Exceptions
             xcpt_valid_next     = alu_reorder_buffer_xcpt_info.valid    ;
