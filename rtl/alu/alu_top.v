@@ -168,7 +168,7 @@ assign req_wb_mem_blocked_next = (flush_alu[thread_id]       ) ? 1'b0 :
                                                                   & wb_mem_blocked_type_ff[thread_id]):
                                                                  1'b0;
 
-assign req_wb_mem_blocked       = req_wb_mem_blocked_ff[previous_thread];
+assign req_wb_mem_blocked       = (flush_alu[previous_thread]) ? 1'b0 : req_wb_mem_blocked_ff[previous_thread];
 assign req_wb_dcache_info       = req_dcache_info_ff;
                                                   
 // Request to D$ stage in case ST/LD is the oldest instr on the pipe                                                  
@@ -514,7 +514,11 @@ begin
 	begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) + `ZX(`ALU_OVW_DATA_WIDTH,rb_data);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow = !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
+        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] 
+                                & (  req_alu_valid_ff[thread_id] 
+                                   | req_alu_valid              )?   (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) 
+                                                                   | (ra_data != '0 && oper_data == '0) : 
+                                                                   1'b0;
     end
     // SUB
 	else if (opcode == `INSTR_SUB_OPCODE)
@@ -526,21 +530,44 @@ begin
     begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) + `ZX(`ALU_OVW_DATA_WIDTH,offset);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
+        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] 
+                                & (  req_alu_valid_ff[thread_id] 
+                                   | req_alu_valid              )?   (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) 
+                                                                   | (ra_data != '0 && oper_data == '0) : 
+                                                                   1'b0;
+    end
+    //SUBI
+    else if (opcode == `INSTR_SUBI_OPCODE)
+    begin
+        oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) - `ZX(`ALU_OVW_DATA_WIDTH,offset);
+        rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
+        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] 
+                                & (  req_alu_valid_ff[thread_id] 
+                                   | req_alu_valid              )?   (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) 
+                                                                   | (ra_data != '0 && oper_data == '0) : 
+                                                                   1'b0;
     end
     //SLL
     else if (opcode == `INSTR_SLL_OPCODE)
     begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) << `ZX(`ALU_OVW_DATA_WIDTH,offset);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
+        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] 
+                                & (  req_alu_valid_ff[thread_id] 
+                                   | req_alu_valid              )?   (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) 
+                                                                   | (ra_data != '0 && oper_data == '0) : 
+                                                                   1'b0;
     end
     //SRL
     else if (opcode == `INSTR_SRL_OPCODE)
     begin
         oper_data =  `ZX(`ALU_OVW_DATA_WIDTH,ra_data) >> `ZX(`ALU_OVW_DATA_WIDTH,offset);
         rf_data   =  oper_data[`REG_FILE_DATA_RANGE];
-        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] & (req_alu_valid_ff[thread_id] | req_alu_valid) ? (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) : 1'b0;
+        xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] 
+                                & (  req_alu_valid_ff[thread_id] 
+                                   | req_alu_valid              )?   (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) 
+                                                                   | (ra_data != '0 && oper_data == '0) : 
+                                                                   1'b0;
     end
     // MEM
 	else if (is_m_type_instr(opcode)) 

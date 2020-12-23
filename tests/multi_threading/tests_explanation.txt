@@ -544,9 +544,8 @@ Test name: xcpt_handler_tlb.hex
 #2800:  LDW R28,0x0(R31)    // restore the value for R28
 #2804:  LDW R29,0x4(R31)    // restore the value for R29
 #2808:  LDW R30,0x8(R31)    // restore the value for R30
-#280C:  SUB R31,R31,R31     // restore the value for R31
+#280C:  SUBI R31,R31,0x3000 // restore the value for R31
 #2810:  IRET                // return back to src code 
-
 
 ### Write R15 to note that physical address returned is ok
 #3018:  ADDI R15,R15,0x1234
@@ -602,7 +601,6 @@ What does this check:
       on iTLB and it will return phy addr 0x3040. It will try to fetch from there and it read NOPs.
  
 - If evertyhing goes as expected we should see the next values on the registers:
-        - R2  = 0x07FFF
         - R5  = 0x6BCD
         - R6  = 0x6BCD
         - R7  = 0xABCDEF01

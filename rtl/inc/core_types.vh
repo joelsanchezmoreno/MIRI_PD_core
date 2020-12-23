@@ -13,18 +13,19 @@ function automatic is_r_type_instr;
             |(opcode == `INSTR_SUB_OPCODE)
             |(opcode == `INSTR_SLL_OPCODE)
             |(opcode == `INSTR_SRL_OPCODE)
-            |(opcode == `INSTR_ADDI_OPCODE))
+            |(opcode == `INSTR_ADDI_OPCODE)
+            |(opcode == `INSTR_SUBI_OPCODE))
                 is_r_type_instr = 1'b1;
     end
 endfunction
 
 
-function automatic is_addi_type_instr;
+function automatic is_addi_subi_type_instr;
     input logic [`INSTR_OPCODE_RANGE] opcode;
     begin
-        is_addi_type_instr = 1'b0;
+        is_addi_subi_type_instr = 1'b0;
         if (opcode == `INSTR_ADDI_OPCODE)
-            is_addi_type_instr = 1'b1;
+            is_addi_subi_type_instr = 1'b1;
     end
 endfunction
 

@@ -393,7 +393,7 @@ begin
         else // if not store instruction we check rb instead of rd
         begin
             ticket_src2 = reg_rob_id_ff[thread_id][rb_addr];
-            if (  !is_addi_type_instr(opcode) 
+            if (  !is_addi_subi_type_instr(opcode) 
                 & reg_blocked_valid_ff[thread_id][rb_addr]) //check if this register is protected
             begin
                 // check if the value written to RF corresponds to the
