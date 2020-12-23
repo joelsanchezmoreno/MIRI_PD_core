@@ -757,7 +757,7 @@ begin
                     req_size[thread_id]   = pending_store_req_ff[thread_id].size;
 
                     // Modify the D$ with the store buffer request information
-                    dCache_tag[req_target_pos_ff][thread_id]   =  req_tag[thread_id];
+                    dCache_tag[req_target_pos_ff[thread_id]]  =  req_tag[thread_id];
                     dCache_dirty[req_target_pos_ff[thread_id]] = 1'b1; 
                     dCache_valid[req_target_pos_ff[thread_id]] = 1'b1;
 
