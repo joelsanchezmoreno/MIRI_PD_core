@@ -71,7 +71,7 @@ arb_prio_mm
 
 assign req_valid_miss = req_valid_miss_active_thread | (|req_valid_miss_arb);
 assign req_info_miss  = (req_valid_miss_active_thread) ? req_info_miss_arb[active_thread_id] :
-                                                         req_info_miss_arb[arb_winner_ff];
+                                                         req_info_miss_arb[arb_winner];
 
 ///////////////////////////////////
 // Response to Cache stage management
@@ -538,12 +538,6 @@ begin
                                         dCache_valid[req_target_pos[thread_id]] = 1'b0;
                                         dCache_dirty[req_target_pos[thread_id]] = 1'b0;
 
-                                        // Save pendent request addr (for future miss)
-                                        // on the MM array such that if a new thread
-                                        // asks for the same line, we block it
-                                        blocked_by_thread_tag[thread_id]    = req_tag[thread_id];
-                                        blocked_by_thread_valid[thread_id]  = 1'b1;
-                                        blocked_by_thread_id[thread_id]     = thread_id;
 
                                         // Next stage
                                         pending_req[thread_id]     = req_info;                    
@@ -620,14 +614,40 @@ begin
                 // Wait for response from memory ACK
                 if (rsp_valid_miss && (thread_id == rsp_thread_id))
                 begin
-                    // Send new request to bring the new line
-                    req_info_miss_arb[thread_id].addr      = pending_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL;
-                    req_info_miss_arb[thread_id].is_store  = 1'b0;
-                    req_info_miss_arb[thread_id].thread_id = thread_id;
-                    req_valid_miss_arb[thread_id]          = 1'b1;
+                    // We evaluate if a different thread failed to get the
+                    // same tag while we were evicting the dirty line.
+                    // If that is the case we then move to
+                    // pendent_request and wait for the other thread to
+                    // receive the response from memory
+                    for(thr = 0; thr < `THR_PER_CORE; thr++)
+                    begin
+                       if(  blocked_by_thread_valid_ff[thr]
+                          & blocked_by_thread_tag_ff[thr] == req_tag[thread_id])
+                       begin
+                           blocked_by_thread_id[thread_id] = thr;
+                           dcache_state[thread_id]         = pendent_request;
+                       end
+                    end
+                    // If the line has not been requested by another thread.
+                    // Then, we request the line ourselves and we reserve it
+                    if (dcache_state[thread_id] != pendent_request)
+                    begin
+                        // Send new request to bring the new line
+                        req_info_miss_arb[thread_id].addr      = pending_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL;
+                        req_info_miss_arb[thread_id].is_store  = 1'b0;
+                        req_info_miss_arb[thread_id].thread_id = thread_id;
+                        req_valid_miss_arb[thread_id]          = 1'b1;
+                        
+                        // Save pendent request addr (for future miss)
+                        // on the MM array such that if a new thread
+                        // asks for the same line, we block it
+                        blocked_by_thread_tag[thread_id]    = pending_req_ff[thread_id].addr[`DCACHE_TAG_ADDR_RANGE];
+                        blocked_by_thread_valid[thread_id]  = 1'b1;
+                        blocked_by_thread_id[thread_id]     = thread_id;
 
-                    dcache_state[thread_id]     = pendent_request;
-                    dcache_state_aux[thread_id] = bring_line;
+                        dcache_state[thread_id]     = pendent_request;
+                        dcache_state_aux[thread_id] = bring_line;
+                    end
                 end
             end
 
@@ -661,6 +681,10 @@ begin
                     begin
                         req_offset[thread_id] = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE]  >> $clog2(req_size[thread_id]+1);
                         rsp_data_next[thread_id]  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data_miss[`GET_LOWER_BOUND(`DWORD_BITS,req_offset[thread_id])+:`DWORD_BITS]);
+                    end
+                    if (thread_id == active_thread_id)
+                    begin
+                        rsp_data = rsp_data_next[thread_id];
                     end
                 end
 
@@ -868,25 +892,74 @@ begin
             pendent_request:
             begin
                 rsp_valid_threads[thread_id] = 1'b0;
-                req_valid_miss_arb[thread_id]  = 1'b1;
-                if (dcache_state_aux_ff[thread_id] == evict_line)
-                begin                
-                    req_info_miss_arb[thread_id].addr       = pending_store_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL; //Evict full line
-                    req_info_miss_arb[thread_id].is_store   = 1'b1;
-                    req_info_miss_arb[thread_id].data       = dCache_data[req_target_pos_ff[thread_id]];
-                    req_info_miss_arb[thread_id].thread_id  = thread_id;
+                req_valid_miss_arb[thread_id]  = 1'b0;
+
+                // If the thread was waiting for another thread response, then
+                // we can unblock and move to next stage
+                if ( blocked_by_thread_id_ff[thread_id] != thread_id )
+                begin     
+                    if ( rsp_valid_miss 
+                        & blocked_by_thread_valid_ff[rsp_thread_id]
+                        & (blocked_by_thread_id_ff[thread_id] == rsp_thread_id))
+                    begin
+                        if (dcache_state_aux_ff[thread_id] == evict_line)
+                        begin
+                            req_info_miss_arb[thread_id].addr       = pending_store_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL; //Evict full line
+                            req_info_miss_arb[thread_id].is_store   = 1'b1;
+                            req_info_miss_arb[thread_id].data       = dCache_data[req_target_pos_ff[thread_id]];
+                            req_info_miss_arb[thread_id].thread_id  = thread_id;
+                            if (arb_winner_ff == thread_id)
+                                dcache_state[thread_id] = dcache_state_aux_ff[thread_id];
+                            else
+                                dcache_state[thread_id] = pendent_request;
+                        end
+                        else //wanted to bring line, so we check if we can respond
+                        begin                  
+                            dcache_ready_next[thread_id]   = (thread_id == active_thread_id);
+                            dcache_state[thread_id]        = (thread_id == active_thread_id) ? idle : wait_until_active;
+                            rsp_valid_threads[thread_id]   = (thread_id == active_thread_id);
+                            rsp_data_en[thread_id]         = (thread_id != active_thread_id);
+                            req_size[thread_id]            = pending_req_ff[thread_id].size;
+                            rsp_bus_error_next[thread_id]  = (thread_id != active_thread_id) ? rsp_bus_error : '0;
+                            if (req_size[thread_id] == Byte)
+                            begin
+                                req_offset[thread_id] = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE];
+                                rsp_data_next[thread_id]  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE,rsp_data_miss[`GET_LOWER_BOUND(`BYTE_BITS,req_offset[thread_id])+:`BYTE_BITS]);
+                            end
+                            else
+                            begin
+                                req_offset[thread_id] = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE]  >> $clog2(req_size[thread_id]+1);
+                                rsp_data_next[thread_id]  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data_miss[`GET_LOWER_BOUND(`DWORD_BITS,req_offset[thread_id])+:`DWORD_BITS]);
+                            end
+                            if (thread_id == active_thread_id)
+                            begin
+                                rsp_data = rsp_data_next[thread_id];
+                            end
+                        end
+                    end
                 end
-                else //wanted to bring line
-                begin                    
-                    req_info_miss_arb[thread_id].addr       = pending_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL;
-                    req_info_miss_arb[thread_id].is_store   = 1'b0;
-                    req_info_miss_arb[thread_id].thread_id  = thread_id;
+                else // the thread was not waiting for another thread response 
+                begin
+                    req_valid_miss_arb[thread_id]  = 1'b1;
+                    if (dcache_state_aux_ff[thread_id] == evict_line)
+                    begin                
+                        req_info_miss_arb[thread_id].addr       = pending_store_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL; //Evict full line
+                        req_info_miss_arb[thread_id].is_store   = 1'b1;
+                        req_info_miss_arb[thread_id].data       = dCache_data[req_target_pos_ff[thread_id]];
+                        req_info_miss_arb[thread_id].thread_id  = thread_id;
+                    end
+                    else //wanted to bring line
+                    begin                    
+                        req_info_miss_arb[thread_id].addr       = pending_req_ff[thread_id].addr >> `DCACHE_ADDR_RSH_VAL;
+                        req_info_miss_arb[thread_id].is_store   = 1'b0;
+                        req_info_miss_arb[thread_id].thread_id  = thread_id;
+                    end
+                                
+                    if (arb_winner_ff == thread_id)
+                        dcache_state[thread_id] = dcache_state_aux_ff[thread_id];
+                    else
+                        dcache_state[thread_id] = pendent_request;
                 end
-                            
-                if (arb_winner_ff == thread_id)
-                    dcache_state[thread_id] = dcache_state_aux_ff[thread_id];
-                else
-                    dcache_state[thread_id] = pendent_request;
             end
 
             // This state is executed when the thread was ready to response to
