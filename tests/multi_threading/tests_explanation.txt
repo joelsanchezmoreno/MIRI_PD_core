@@ -512,7 +512,7 @@ Test name: xcpt_handler_tlb.hex
     
 #########
 ### Exception handler
-#2000:  ADDI R31,R31,0x3000     // @ to reserverd area for data
+#2000:  ADDI R31,R31,0x3800     // @ to reserverd area for data
 #2004:  STW  0x0(R31),R28         // R28 will be used for dTLB xcpt id
 #2008:  STW  0x4(R31),R29         // R29 will be used for iTLB xcpt id
 #200C:  STW  0x8(R31),R30         // R30 will be used to store xcpt id
@@ -544,13 +544,13 @@ Test name: xcpt_handler_tlb.hex
 #2800:  LDW R28,0x0(R31)    // restore the value for R28
 #2804:  LDW R29,0x4(R31)    // restore the value for R29
 #2808:  LDW R30,0x8(R31)    // restore the value for R30
-#280C:  SUBI R31,R31,0x3000 // restore the value for R31
+#280C:  SUBI R31,R31,0x3800 // restore the value for R31
 #2810:  IRET                // return back to src code 
 
 ### Write R15 to note that physical address returned is ok
-#3018:  ADDI R15,R15,0x1234
-#301C:  LDW R7,0x1050(R31)
-#3020:  JUMP 0x1040
+#3028:  ADDI R15,R15,0x1234
+#302C:  LDW R7,0x1050(R7)
+#3030:  JUMP 0x1040
 
 #########
 What does this check: 
@@ -565,11 +565,11 @@ What does this check:
             - Restore the value for R28,R29,R30.
             - Perform an IRET.
 
-    - It will then start executing from virt. PC 0x1018, which was the instruction that caused cache bus error
+    - It will then start executing from virt. PC 0x1028, which was the instruction that caused cache bus error
       exception. But since we returned from xcpt handler, now the privilege mode is User mode, and this 
       means that TLB is now enabled. 
 
-    - The virt. PC 0x1018 is sent to iTLB and it misses, this generates an iTLB exception that is propagated up 
+    - The virt. PC 0x1028 is sent to iTLB and it misses, this generates an iTLB exception that is propagated up 
       to the WB stage where it forces the core to jump to the exception handler again at address 0x2000.
       The privilege mode is then changed to Supervisor.
         - Then, this will save the values for R28,R29,R30.
@@ -581,26 +581,27 @@ What does this check:
             - Performs a TLBWRITE instruction targetting the iTLB.
             - Forces the core to jump to address 0x2040:
                 - Restores the value for R5 and R6, and jumps to 0x2800 to restore all the registers value and 
-                  performs the IRET again, which returns the core to the PC 0x1018 and puts privilege mode to User.
+                  performs the IRET again, which returns the core to the PC 0x1028 and puts privilege mode to User.
 
-    - The core starts executing from PC 0x1018 again and it hits on iTLB, so the returned physical address is now 
-      0x3018. The core starts executing from there where we put an ADDI instruction to R15 with a value of 0x1234
+    - The core starts executing from PC 0x1028 again and it hits on iTLB, so the returned physical address is now 
+      0x3028. The core starts executing from there where we put an ADDI instruction to R15 with a value of 0x1234
       to check that everything has been executed as expected. 
 
-    - Then, it will fetch the next instruction (virt. PC = 101C, phy PC = 0x301C), which is a LD to address 0x1050,  
+    - Then, it will fetch the next instruction (virt. PC = 102C, phy PC = 0x302C), which is a LD to address 0x1050,  
       since dTLB is empty it will generate an xcpt and will force the core to jump again to the xcpt handler (0x2000).
 
     - Once the core is on the xcpt handler it will check which kind of xcpt has been raised, and it will generate
       a physical address for the given virtual address that failed (virt. addr fault 0x1050, generated phy addr = 0x3050). 
       
     - Next, the xcpt handler will perform a TLBWRITE on the dTLB, will restore the registers value and jump back to the 
-      PC where it failed (virt. PC = 101C, phy PC = 0x301C). Then, on the next attempt it will find that data is at address
+      PC where it failed (virt. PC = 102C, phy PC = 0x302C). Then, on the next attempt it will find that data is at address
       0x3050, and it will write the main memory content (0xABCDEF01) on R7.
 
-    - Finally, it will perform a JUMP (virt. PC = 1020, phy PC = 0x3020) to address 0x1040, which means that it will look
-      on iTLB and it will return phy addr 0x3040. It will try to fetch from there and it read NOPs.
+    - Finally, it will perform a JUMP (virt. PC = 1028, phy PC = 0x3028) to address 0x1040, which means that it will look
+      on iTLB and it will return phy addr 0x3040. It will try to fetch from there and read all NOPs.
  
 - If evertyhing goes as expected we should see the next values on the registers:
+        - R0  = 0x7FFF (thread 0); 0x8000 (thread 1)
         - R5  = 0x6BCD
         - R6  = 0x6BCD
         - R7  = 0xABCDEF01
@@ -608,92 +609,6 @@ What does this check:
         - R28 = 0x6BCD
         - R29 = 0x6BCD
         - R30 = 0x6BCD
+        - R31 = 0xEDA (thread 0); 0x0 (thread 1)
 
 Result: Working as expected                  
-///////////////////////////////////////////////////////////////////////////
-// TEST BUFFER SUM
-
-Test name: buffer_sum.hex
-
-# mem[0x1080] -- initial value 0x00000000
-
-1000:	ADD  R1,R0,R0
-1004:	ADD  R2,R0,R0
-1008:	ADD  R3,R0,R0
-100C:	ADDI R4,R0,0x80
-
-#loop
-	1010:	STW  0x0(R2),R3
-	1014:	ADDI R2,R2,0x4
-	1018:	ADDI R3,R3,0x1
-	101C:	BLT  R3,R4,0x1010
-1020:	ADD  R3,R0,R0
-1024:	ADD  R2,R0,R0
-#loop2
-	1028:	LDW  R5,0x0(R2)
-	102C:	ADD  $R1,R1,R5
-	1030:	ADDI R2,R2,0x4
-	1034:	ADDI R3,R3,0x1
-	1038:	BLT  R3,R4,0x1028
-NOP
-
-- Code:
-	int main() {
-        	int a[128], sum = 0;
-        	int i;
-        	for(i = 0; i < 128; i++) a[i] = i;
-        	for(i = 0; i < 128; i++) sum += a[i];
-	}    	
-- If evertyhing goes as expected we should see the next values on the registers:
-        - R0 = 0x0
-        - R1 = 0x1fc0
-        - R2 = 0x200
-        - R3 = 0x80
-        - R4 = 0x80
-	- mem[0x1080:0x1280] = 0:127
-Result:
-///////////////////////////////////////////////////////////////////////////
-// TEST MEMORY COPY
-
-Test name: mem_copy.hex
-
-# mem[0x1080] -- initial value 0x00000000
-
-1000:  ADDI R2,R0,0x1080
-1004:  ADD  R3,R0,R0
-1008:  ADD  R4,R0,0x80
-100C:  ADD  R7,R0,0x5
-#loop
-	1010:  STW  0(R2),R7
-	1014:  ADDI R2,R2,0x4
-	1018:  ADDI R3,R3,0x1
-	101C:  BLT  R3,R4,0x1010
-1020:  ADD  R2,R0,0x1080
-1024:  ADD  R3,R0,R0
-1028:  ADDI R8,R0,0x1280
-#loop2
-	102C:  LDW  R5,0(R2)
-	1030:  STW  0(R8),R5
-	1034:  ADDI R2,R2,0x4
-	1038:  ADDI R8,R8,0x4
-	103C:  ADDI R3,R3,0x1
-	1040:  BLT  R3,R4,0x102C
-NOP
-- Code:
-int main() {
-        int a[128], b[128];
-        int i;
-        for(i = 0; i < 128; i++) a[i] = 5;
-        for(i = 0; i < 128; i++) b[i] = a[i];
-}
-- If evertyhing goes as expected we should see the next values on the registers:
-        - R0 = 0x0
-        - R2 = 0x1280
-        - R3 = 0x80
-	- R4 = 0x80
-	- R5 = 0x5
-	- R7 = 0x05
-        - R8 = 0x1480
-        - mem[0x1080:0x1280] = 5
-	- mem[0x1280:0x1492] = 5
-Result:
