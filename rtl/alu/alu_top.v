@@ -544,7 +544,7 @@ begin
         xcpt_alu.xcpt_overflow =  !stall_decode[thread_id] 
                                 & (  req_alu_valid_ff[thread_id] 
                                    | req_alu_valid              )?   (oper_data[`REG_FILE_DATA_WIDTH+:`REG_FILE_DATA_WIDTH] != '0) 
-                                                                   | (ra_data != '0 && oper_data == '0) : 
+                                                                   | (oper_data > ra_data ) : 
                                                                    1'b0;
     end
     //SLL
