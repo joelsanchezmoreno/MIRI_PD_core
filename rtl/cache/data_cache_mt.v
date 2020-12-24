@@ -383,7 +383,8 @@ begin
                     if (dcache_tags_hit & req_info.is_store)
                     begin
                         if (  (!dCache_reserved_valid_ff[hit_way]) 
-                            | ( dCache_reserved_way_ff[hit_way] == thread_id))
+                            | (  dCache_reserved_valid_ff[hit_way] 
+                               & dCache_reserved_way_ff[hit_way] == thread_id))
                         begin
                                 // Remove reserved once STC has been performed
                             dCache_reserved_valid[hit_way] = 1'b0;
@@ -463,27 +464,17 @@ begin
 
                             // Reserve way if conditional LD. Report error if
                             // conditional ST and no reservation was done
-                        if (req_info.conditional)
+                        if (  req_info.conditional
+                            & req_info.is_store)
                         begin
-                            if (!req_info.is_store) // If load
-                            begin
-                                dCache_reserved_valid[req_target_pos[thread_id]]  = 1'b1;
-                                dCache_reserved_way[req_target_pos[thread_id]]    = thread_id;
-                            end
-                            else // If store
-                            begin
-                                if(  !dCache_reserved_valid_ff[req_target_pos[thread_id]]
-                                   | dCache_reserved_way_ff[req_target_pos[thread_id]] != thread_id)
-                                begin
-                                    rsp_valid_threads[thread_id] = 1'b1;
-                                    xcpt_store_cond = 1'b1;
-                                    rsp_data        = '1;
-                                    dcache_ready_next[thread_id]   = 1'b1;
-                                end
-                            end
+                            rsp_valid_threads[thread_id] = 1'b1;
+                            xcpt_store_cond = 1'b1;
+                            rsp_data        = '1;
+                            dcache_ready_next[thread_id]   = 1'b1;
                         end
                         if (!xcpt_store_cond)
                         begin
+                            // If store miss. Then, report error
                             // We evaluate if a different thread failed to get the
                             // same tag, if that is the case we then move to
                             // bring_line and wait for the other thread to
@@ -498,13 +489,22 @@ begin
                                    pending_req[thread_id]   = req_info;
                                end
                             end
+
                             // If we found that we're blocked by another thread,
                             // then do nothing and go to bring line.
                             // Otherwise, check if we need to replace ways, or
                             // if the store buffer has pendent requests or if
                             // we need to bring the line
                             if (dcache_state[thread_id] != bring_line)
-                            begin
+                            begin                               
+                                  // Reserve line if needed             
+                                if (  req_info.conditional 
+                                    & !req_info.is_store) // If load conditional
+                                begin
+                                    dCache_reserved_valid[req_target_pos[thread_id]]  = 1'b1;
+                                    dCache_reserved_way[req_target_pos[thread_id]]    = thread_id;
+                                end
+
                                 // If there is a request on the store buffer that targets
                                 // the way we want to replace, we need to perform the ST
                                 // and then evict the line
