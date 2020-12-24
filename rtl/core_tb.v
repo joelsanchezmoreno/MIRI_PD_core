@@ -260,9 +260,9 @@ begin
     if (reset_i)
     begin
         `ifdef MATRIX_MULTIPLY_TEST
-    	    $readmemh("tests/matrix_multiply/verilator_MxM_src_code.hex", main_memory, `MM_BOOT_ADDR);
-    	    $readmemh("tests/matrix_multiply/data_in_MxM_A.hex", main_memory, `MM_MATRIX_A_ADDR);
-    	    $readmemh("tests/matrix_multiply/data_in_MxM_B.hex", main_memory, `MM_MATRIX_B_ADDR);
+    	    $readmemh("tests/single_threading/matrix_multiply/verilator_MxM_src_code.hex", main_memory, `MM_BOOT_ADDR);
+    	    $readmemh("tests/single_threading/matrix_multiply/data_in_MxM_A.hex", main_memory, `MM_MATRIX_A_ADDR);
+    	    $readmemh("tests/single_threading/matrix_multiply/data_in_MxM_B.hex", main_memory, `MM_MATRIX_B_ADDR);
         `else
             `ifdef BUFFER_SUM_TEST
     	        $readmemh("tests/buffer_sum/buffer_sum.hex", main_memory, `MM_BOOT_ADDR);
@@ -326,7 +326,7 @@ integer out_file,iter_out;
 initial
 begin
     `ifdef MATRIX_MULTIPLY_TEST
-        out_file = $fopen("tests/matrix_multiply/verilator_matrix_C.hex","w");  
+        out_file = $fopen("tests/single_threading/matrix_multiply/verilator_matrix_C.hex","w");  
     `else
         out_file = $fopen("data_output_file.hex","w");  
     `endif
