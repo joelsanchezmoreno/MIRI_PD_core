@@ -158,8 +158,9 @@ logic [`THR_PER_CORE-1:0] req_wb_mem_blocked_ff;
 // ready
 logic wb_mem_blocked_type;
 logic [`THR_PER_CORE-1:0] wb_mem_blocked_type_ff;
-assign wb_mem_blocked_type =   is_m_type_instr(req_alu_info.opcode) 
-                             & ((rob_tail != req_alu_instr_id) | !dcache_ready[thread_id] );
+assign wb_mem_blocked_type = is_m_type_instr(req_alu_info.opcode) 
+                            & (  (rob_tail != req_alu_instr_id) 
+                               | !dcache_ready[thread_id] );
 
 assign req_wb_mem_blocked_next = (flush_alu[thread_id]       ) ? 1'b0 :
                                  (stall_decode[thread_id]    ) ? 1'b0 : 
@@ -202,10 +203,10 @@ begin
     assign update_ff = (ii == thread_id); 
 
         //     CLK    RST                    EN         DOUT                       DIN                      DEF
-    `RST_EN_FF(clock, reset | flush_alu[ii], update_ff, req_wb_mem_blocked_ff[ii], req_wb_mem_blocked_next, '0)
+    `RST_EN_FF(clock, reset | flush_alu[ii], update_ff & !stall_decode_ff[ii], req_wb_mem_blocked_ff[ii], req_wb_mem_blocked_next, '0)
 
         //     CLK    RST                    EN         DOUT                        DIN                  DEF
-    `RST_EN_FF(clock, reset | flush_alu[ii], update_ff, wb_mem_blocked_type_ff[ii], wb_mem_blocked_type, '0)
+    `RST_EN_FF(clock, reset | flush_alu[ii], update_ff & !stall_decode_ff[ii], wb_mem_blocked_type_ff[ii], wb_mem_blocked_type, '0)
     
         // CLK    EN         DOUT                    DIN                  
     `EN_FF(clock, update_ff, dcache_mem_type_ff[ii], dcache_mem_type)
