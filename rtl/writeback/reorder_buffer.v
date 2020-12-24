@@ -452,7 +452,7 @@ begin
         & reorder_buffer_mem_instr_blocked_ff[thread_mem_blocked][oldest_pos_mem_blocked]) 
     begin
         reorder_buffer_mem_instr_blocked[thread_mem_blocked][oldest_pos_mem_blocked]  = 1'b0;
-        req_to_dcache_valid_next            = 1'b1;
+        req_to_dcache_valid_next            = !flush_cache[thread_mem_blocked];
         req_to_dcache_thread_id_next        = thread_mem_blocked;
         req_to_dcache_info_next.instr_id    = reorder_buffer_data_ff[thread_mem_blocked][oldest_pos_mem_blocked].instr_id;
         req_to_dcache_info_next.rd_addr     = reorder_buffer_data_ff[thread_mem_blocked][oldest_pos_mem_blocked].rd_addr;
