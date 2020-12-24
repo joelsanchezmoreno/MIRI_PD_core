@@ -6,16 +6,16 @@ Test name: multiple_ld_st_test.hex
 # mem[0x1018+0x30] -- initial value 0xCBAE05FA
 # mem[0x10C8+0x30] -- initial value 0xCBAE05FA
 
-1000:   GETID   R0              0 ADDED + NEW - done
-1004:   BNE     R0,R1,0x1080    1 ADDED - done
-1008:   CHGMODE                 2 ADDED + NEW - done
-100C:   ADDI    R30,R30,0xEDA   3 ADDED - done
-                                                                  
+1000:   GETID   R0              0
+1004:   BNE     R0,R1,0x1080    1
+1008:   CHGMODE                 2
+100C:   ADDI    R30,R30,0xEDA   3
+                                 
     # thread 0 code
 1010:   ADDI R0,R0,0x7          4
 1014:   ADDI R1,R1,0x3          5
 1018:   ADD  R2,R0,R1           6
-101C:   ADDI R3,R3,0x1018       7  # CHANGED - done
+101C:   ADDI R3,R3,0x1018       7
 
 1020:   LDW  R5,0x30(R3)        0   # R5 = 0xCBAE05FA
 1024:   STW  0x30(R3),R2        1   # mem[0x1018+0x30] = 0x0000 0000A
@@ -33,7 +33,7 @@ Test name: multiple_ld_st_test.hex
 1080:   ADDI R0,R0,0x7          2
 1084:   ADDI R1,R1,0x3          3
 1088:   ADD  R2,R0,R1           4
-108C:   ADDI R3,R3,0x10C8       5 CHANGED - done
+108C:   ADDI R3,R3,0x10C8       5
 
 1090:   LDW  R5,0x30(R3)        6   # R5 = 0xCBAE06FA
 1094:   STW  0x30(R3),R2        7   # mem[0x10C8+0x30] = 0x0000 0000B
@@ -128,7 +128,7 @@ CODE THREAD 1
 1084:   ADDI R1,R1,0x0      # iter
 1088:   ADDI R2,R2,0x2      # num iter - 1
 108C:   ADDI R4,R4,0xEDA    
-1090:   BEQ  R5,R4,0x1500   # TODO CHANGE jump to NOPs as we have finished
+1090:   BEQ  R5,R4,0x1500   
 
 #loop                             
     1094:   BGT R1,R2,0x10AC   
@@ -612,3 +612,60 @@ What does this check:
         - R31 = 0xEDA (thread 0); 0x0 (thread 1)
 
 Result: Working as expected                  
+
+///////////////////////////////////////////////////////////////////////////
+// TEST LOADS AND STORES CONDITIONALS
+
+Test name: multiple_ld_st_conditional_test.hex
+
+# mem[0x1018+0x30] -- initial value 0xCBAE05FA
+
+1000:   GETID   R0              0     
+1004:   BNE     R0,R1,0x1010    1
+1008:   CHGMODE                 2     
+100C:   ADDI    R30,R30,0xEDA   3
+                                                                  
+1010:   ADDI R0,R0,0x7          4
+1014:   ADDI R1,R1,0x3          5
+1018:   ADD  R2,R0,R1           6
+101C:   ADDI R3,R3,0x1018       7                  
+
+1020:   LDR  R5,0x30(R3)        0   # R5 = 0xCBAE05FA
+1024:   ADDI R5,R5,0x1          1   # R5 = 0xCBAE05FB               
+1028:   STCW 0x30(R3),R5        2   # mem[0x1018+0x30] = 0xCBAE05FB
+102C:   LDW  R4,0x30(R3)        3   # R4 = 0xCBAE05FB
+
+1030:   JUMP 0x1500
+
+   // xcpt handler 
+2000:  ADDI R31,R31,0x1         // Increase counter as it failed
+2004:  LDR  R5,0x30(R3)         // Try to reserve the line again 
+2008:  ADDI R5,R5,0x1           // R5 = 0xCBAE05FC
+200C:  JUMP 0x1028 
+
+
+What does this check: 
+    - Ensure the threads can read their identifier (thread_id)
+    - Ensure that when a thread jumps the other is not affected by that
+    - Ensure that a line can be reserved using LDR
+    - Ensure that a second LDR overrides the first one
+    - Ensure that the STC on a non-reserved line generates an exception
+    - Ensure that when there is a conditional exception, this is propagated to WB
+    - Ensure that we can reserve the line multiple times with LDR
+    - We do not use IRET because it would change privilege mode to User and fail with iTLB miss.
+      IRET testing is done in other tests.
+
+- If evertyhing goes as expected we should see the next values on the registers and memories of both threads:
+        - R0 = 0x7 (thread 0) ; 0x8 (thread 1)
+        - R1 = 0x3
+        - R2 = 0xA (thread 0) ; 0xB (thread 1)
+        - R3 = 0x1018
+        - R4 = 0xCBAE05FB (thread 0); 0xCBAE05FC (thread 1);
+        - R5 = 0xCBAE05FB (thread 0); 0xCBAE05FC (thread 1);
+        - mm[0x1038] = 0xCBAE05FC
+
+In addition, thread 0 R30 should be set to 0xEDA.
+
+Result: Working as expected                  
+
+
