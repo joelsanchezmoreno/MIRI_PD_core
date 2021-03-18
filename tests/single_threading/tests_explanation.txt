@@ -19,6 +19,7 @@ Test name: multiple_ld_st_test.hex
 1024:   STB  0x31(R3),R0        1   # mem[0x1008+0x30] = 0x0003 070A
 1028:   STW  0x4C(R3),R2        2   # mem[0x1008+0x4C] = 0x0000 000A
 102C:   STW  0x68(R3),R3        3   # mem[0x1008+0x68] = 0x0000 1008
+1030:   JUMP 0x1500             4
     
 What does this check: 
     - Initialize memory (0x1038) to 0xCBAE05FA 
@@ -460,7 +461,8 @@ What does this check:
       on iTLB and it will return phy addr 0x3040. It will try to fetch from there and it read NOPs.
  
 - If evertyhing goes as expected we should see the next values on the registers:
-        - R2  = 0x07FFF
+        - R0  = 0x07FFF
+        - R2  = 0x00000
         - R5  = 0x6BCD
         - R6  = 0x6BCD
         - R7  = 0xABCDEF01
