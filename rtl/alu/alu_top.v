@@ -203,7 +203,7 @@ begin
     assign update_ff = (ii == thread_id); 
 
         //     CLK    RST                    EN         DOUT                       DIN                      DEF
-    `RST_EN_FF(clock, reset | flush_alu[ii], update_ff & !stall_decode_ff[ii], req_wb_mem_blocked_ff[ii], req_wb_mem_blocked_next, '0)
+    `RST_EN_FF(clock, reset | flush_alu[ii], update_ff, req_wb_mem_blocked_ff[ii], req_wb_mem_blocked_next, '0)
 
         //     CLK    RST                    EN         DOUT                        DIN                  DEF
     `RST_EN_FF(clock, reset | flush_alu[ii], update_ff & !stall_decode_ff[ii], wb_mem_blocked_type_ff[ii], wb_mem_blocked_type, '0)

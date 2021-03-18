@@ -800,7 +800,7 @@ begin
                         $display("[WRITE CACHE LINE]");
                         $display("                   req_target_pos_ff              = %h",req_target_pos_ff );
                         $display("                   req_offset                     = %h",req_offset[thread_id] );
-                        $display("                   req_size                       = %h",req_size );[thread_id]
+                        $display("                   req_size                       = %h",req_size[thread_id]);
                         $display("                   pending_store_req_ff.data      = %h",pending_store_req_ff[thread_id].data );
                         $display("                   dCache_data[req_target_pos_ff] = %h",dCache_data[req_target_pos_ff[thread_id]] );
                     `endif
@@ -820,43 +820,37 @@ begin
                         // If we were updating the line due to a LD hit we return the data and go to idle
                         if ( store_buffer_hit_tag_ff[thread_id])
                         begin
-                            req_size    = pending_req_ff[thread_id].size;
+                            req_size[thread_id] = pending_req_ff[thread_id].size;
                            
                             // If it was a LD request we return the data 
                             if (!pending_req_ff[thread_id].is_store)
                             begin
-                                if ( req_size == Byte)
+                                if ( req_size[thread_id] == Byte)
                                 begin
                                     req_offset[thread_id]  = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE];
+                                    rsp_data_next[thread_id]  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size[thread_id]+1)*`BYTE_BITS*req_offset[thread_id]) ;
+                                    rsp_data_next[thread_id]  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE, rsp_data_next[thread_id][`BYTE_RANGE]);
                                     // We only return the data if we are the active thread
                                     if (thread_id == active_thread_id)
                                     begin
-                                        rsp_data  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size+1)*`BYTE_BITS*req_offset[thread_id]) ;
+                                        rsp_data  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size[thread_id]+1)*`BYTE_BITS*req_offset[thread_id]) ;
                                         rsp_data  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE, rsp_data[`BYTE_RANGE]);
                                     end
                                 end
                                 else
                                 begin
                                     req_offset[thread_id]  = pending_req_ff[thread_id].addr[`DCACHE_OFFSET_ADDR_RANGE] >> $clog2(pending_req_ff[thread_id].size+1);
+                                    rsp_data_next[thread_id]  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size[thread_id]+1)*`BYTE_BITS*req_offset[thread_id]) ;
+                                    rsp_data_next[thread_id]  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data_next[thread_id][`DWORD_RANGE]);
                                     // We only return the data if we are the active thread
                                     if (thread_id == active_thread_id)
                                     begin
-                                        rsp_data  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size+1)*`BYTE_BITS*req_offset[thread_id]) ;
+                                        rsp_data  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size[thread_id]+1)*`BYTE_BITS*req_offset[thread_id]) ;
                                         rsp_data  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data[`DWORD_RANGE]);
                                     end
                                 end
                                 rsp_valid_threads[thread_id]   = (thread_id == active_thread_id);
                                 rsp_data_en[thread_id]         = (thread_id != active_thread_id);
-                                if ( req_size[thread_id] == Byte)
-                                begin
-                                    rsp_data_next[thread_id]  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size+1)*`BYTE_BITS*req_offset[thread_id]) ;
-                                    rsp_data_next[thread_id]  = `ZX_BYTE(`DCACHE_MAX_ACC_SIZE, rsp_data[`BYTE_RANGE]);
-                                end
-                                else
-                                begin
-                                    rsp_data  = dCache_data[req_target_pos_ff[thread_id]] >> ((req_size+1)*`BYTE_BITS*req_offset[thread_id]) ;
-                                    rsp_data  = `ZX_DWORD(`DCACHE_MAX_ACC_SIZE, rsp_data[`DWORD_RANGE]);
-                                end
                             end
                     
                             // Next stage 
