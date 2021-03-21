@@ -1,4 +1,4 @@
-# MIRI Processor Architecture Core Project
+# MIRI Processor Design Core Project
 
 Processor Description
 --------------------
